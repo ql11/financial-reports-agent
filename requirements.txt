@@ -1,6 +1,9 @@
 # PDF处理
-pypandoc>=1.14        # Pandoc的Python封装库
-# 注意：需要先安装Pandoc工具本身（https://pandoc.org/installing.html）
+pdfplumber>=0.10.0    # PDF表格提取库（主要使用）
+PyMuPDF>=1.23.0       # PDF文本和图像提取（备用）
+pdfminer.six>=20221119  # PDF文本提取（备用）
+camelot-py[cv]>=0.11.0  # PDF表格提取（高级，可选）
+tabula-py>=2.9.0      # PDF表格提取（Java后端，可选）
 
 # 数据处理
 pandas>=2.0.0
