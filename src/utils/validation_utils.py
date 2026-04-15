@@ -241,7 +241,8 @@ def validate_report_year(year: int) -> bool:
     Returns:
         bool: 是否有效
     """
-    current_year = 2025  # 假设当前年份
+    from datetime import datetime
+    current_year = datetime.now().year
     
     # 检查范围（假设有效年份为2000-当前年份）
     if year < 2000 or year > current_year:

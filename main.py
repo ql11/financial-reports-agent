@@ -12,6 +12,7 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from src.core.analyzer import FinancialFraudAnalyzer
+from src.core.data_extractor import DataExtractionError
 from src.utils.validation_utils import validate_pdf_file
 from src.utils.file_utils import list_files
 
@@ -53,6 +54,10 @@ def cmd_analyze(args):
 
         return 0
 
+    except DataExtractionError as e:
+        print(f"\n数据提取失败: {e}")
+        print("请确认PDF为标准格式的上市公司年度报告。")
+        return 1
     except Exception as e:
         print(f"\n分析过程中出错: {e}")
         if args.verbose:

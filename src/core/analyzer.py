@@ -132,13 +132,8 @@ class FinancialFraudAnalyzer:
         if financial_data.historical_data:
             analysis.trends = self._calculate_trends(financial_data)
         
-        # 行业对比（这里使用示例数据，实际应用中应从数据库或API获取）
-        analysis.industry_comparisons = {
-            "毛利率": {"company": current.gross_margin, "industry_avg": 25.0, "industry_median": 24.5},
-            "净利率": {"company": current.net_margin, "industry_avg": 8.0, "industry_median": 7.5},
-            "资产负债率": {"company": current.debt_ratio, "industry_avg": 50.0, "industry_median": 48.0},
-            "流动比率": {"company": current.current_ratio, "industry_avg": 1.5, "industry_median": 1.4}
-        }
+        # 行业对比（需要外部数据源，当前留空）
+        analysis.industry_comparisons = {}
         
         # 检测异常指标
         analysis.anomalies = self._detect_anomalies(financial_data, analysis)

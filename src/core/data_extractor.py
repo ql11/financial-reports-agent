@@ -1,5 +1,5 @@
 """
-PDF数据提取器
+PDF数据提取器 - 从PDF财报中提取真实财务数据
 """
 
 import re
@@ -11,6 +11,11 @@ import pdfplumber
 from ..models.financial_data import FinancialData, FinancialStatement
 
 
+class DataExtractionError(Exception):
+    """数据提取失败异常"""
+    pass
+
+
 class PDFDataExtractor:
     """PDF财务数据提取器"""
     
@@ -19,36 +24,40 @@ class PDFDataExtractor:
         self.tables = []
         
     def extract_from_pdf(self, pdf_path: str) -> FinancialData:
-        """从PDF提取财务数据"""
+        """从PDF提取财务数据
+
+        Raises:
+            FileNotFoundError: PDF文件不存在
+            DataExtractionError: 数据提取失败
+        """
         pdf_path = Path(pdf_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
         
         financial_data = FinancialData()
         
-        try:
-            # 提取文本内容
-            self._extract_text(pdf_path)
-            
-            # 解析公司信息
-            self._parse_company_info(financial_data)
-            
-            # 解析财务数据
-            self._parse_financial_statements(financial_data)
-            
-            # 解析附注信息
-            self._parse_notes(financial_data)
-            
-            # 计算财务比率
-            financial_data.current_year.calculate_ratios()
-            for year_data in financial_data.historical_data.values():
-                year_data.calculate_ratios()
-            
-            return financial_data
-            
-        except Exception as e:
-            print(f"PDF数据提取错误: {e}")
-            return self._create_sample_data()
+        # 提取文本内容
+        self._extract_text(pdf_path)
+        if not self.text_content.strip():
+            raise DataExtractionError(f"无法从PDF中提取文本内容，文件可能已加密或损坏: {pdf_path}")
+        
+        # 解析公司信息
+        self._parse_company_info(financial_data)
+        if not financial_data.company_name:
+            raise DataExtractionError("无法从PDF中识别公司名称")
+        
+        # 解析财务数据
+        self._parse_financial_statements(financial_data)
+        
+        # 解析附注信息
+        self._parse_notes(financial_data)
+        
+        # 计算财务比率
+        financial_data.current_year.calculate_ratios()
+        for year_data in financial_data.historical_data.values():
+            year_data.calculate_ratios()
+        
+        return financial_data
     
     def _extract_text(self, pdf_path: Path):
         """提取PDF文本内容"""
@@ -62,7 +71,6 @@ class PDFDataExtractor:
                 
                 print(f"成功提取文本，共 {len(pdf.pages)} 页")
                 
-                # 尝试提取表格
                 self.tables = []
                 for page in pdf.pages:
                     tables = page.extract_tables()
@@ -74,44 +82,6 @@ class PDFDataExtractor:
             self.text_content = ""
             self.tables = []
     
-    def _parse_company_info(self, financial_data: FinancialData):
-        """解析公司信息"""
-        # 从审计报告首页提取公司名（如"曙光信息产业股份有限公司"）
-        match = re.search(r'^([\u4e00-\u9fa5]+(?:股份|集团|科技|信息|产业|电子|机械|医药|能源|材料)[\u4e00-\u9fa5]*有限公司)', self.text_content, re.MULTILINE)
-        if match:
-            financial_data.company_name = match.group(1).strip()
-        
-        # 其他模式
-        if not financial_data.company_name:
-            match = re.search(r'公司名称[：:]\s*([^\n]+)', self.text_content)
-            if match:
-                financial_data.company_name = match.group(1).strip()
-        
-        # 股票代码
-        match = re.search(r'股票代码[：:]\s*([0-9]{6})', self.text_content)
-        if match:
-            financial_data.stock_code = match.group(1)
-        
-        # 报告年度
-        match = re.search(r'(\d{4})\s*年\s*12\s*月\s*\d{1,2}\s*日', self.text_content)
-        if match:
-            financial_data.report_year = int(match.group(1))
-        else:
-            match = re.search(r'(\d{4})年[度]?\s*(?:报告|年报)', self.text_content)
-            if match:
-                financial_data.report_year = int(match.group(1))
-        
-        # 审计意见
-        if '标准无保留意见' in self.text_content:
-            financial_data.audit_opinion = "标准无保留意见"
-        elif '保留意见' in self.text_content:
-            financial_data.audit_opinion = "保留意见"
-        
-        # 会计师事务所
-        match = re.search(r'([\u4e00-\u9fa5]+会计师事务所)', self.text_content)
-        if match:
-            financial_data.auditor = match.group(1)
-    
     def _parse_number(self, s: str) -> Optional[float]:
         """解析数字字符串"""
         if not s or s.strip() == '' or s.strip() == '-':
@@ -119,68 +89,121 @@ class PDFDataExtractor:
         s = s.strip().replace(',', '')
         if s.startswith('(') and s.endswith(')'):
             s = '-' + s[1:-1]
-        if s.startswith('-'):
-            s = s
         try:
             return float(s)
         except:
             return None
     
-    def _find_number_in_text(self, pattern: str, text: str, group: int = 1) -> Optional[float]:
-        """从文本中查找数字"""
-        match = re.search(pattern, text)
-        if match:
-            return self._parse_number(match.group(group))
-        return None
-    
-    def _parse_financial_statements(self, financial_data: FinancialData):
-        """从PDF文本中解析财务报表数据"""
+    def _parse_company_info(self, financial_data: FinancialData):
+        """解析公司信息"""
         text = self.text_content
         
-        # 确保report_year有值
+        # 从审计报告首页提取公司名（如"曙光信息产业股份有限公司"）
+        match = re.search(
+            r'^([\u4e00-\u9fa5]{2,6}(?:股份|集团|科技|信息|产业|电子|机械|医药|能源|材料|通讯|网络|软件|电气|重工|建设|交通|资本|控股)[\u4e00-\u9fa5]*有限公司)',
+            text, re.MULTILINE
+        )
+        if match:
+            financial_data.company_name = match.group(1).strip()
+        
+        if not financial_data.company_name:
+            match = re.search(r'公司名称[：:]\s*([^\n]+)', text)
+            if match:
+                financial_data.company_name = match.group(1).strip()
+        
+        # 股票代码
+        match = re.search(r'股票代码[：:]\s*([0-9]{6})', text)
+        if match:
+            financial_data.stock_code = match.group(1)
+        
+        # 报告年度
+        match = re.search(r'(\d{4})\s*年\s*12\s*月\s*\d{1,2}\s*日', text)
+        if match:
+            financial_data.report_year = int(match.group(1))
+        else:
+            match = re.search(r'(\d{4})年[度]?\s*(?:报告|年报)', text)
+            if match:
+                financial_data.report_year = int(match.group(1))
+        
+        # 审计意见
+        if '标准无保留意见' in text or '无保留意见' in text:
+            financial_data.audit_opinion = "标准无保留意见"
+        elif '保留意见' in text:
+            financial_data.audit_opinion = "保留意见"
+        elif '否定意见' in text:
+            financial_data.audit_opinion = "否定意见"
+        elif '无法表示意见' in text:
+            financial_data.audit_opinion = "无法表示意见"
+        
+        # 会计师事务所
+        match = re.search(r'([\u4e00-\u9fa5]+会计师事务所)', text)
+        if match:
+            financial_data.auditor = match.group(1)
+    
+    def _parse_financial_statements(self, financial_data: FinancialData):
+        """从PDF文本中解析财务报表数据，提取失败则报错"""
+        text = self.text_content
+        
         if financial_data.report_year <= 0:
-            financial_data.report_year = 2025
+            raise DataExtractionError("无法从PDF中识别报告年度")
+        
         current_year = financial_data.report_year
         
-        # 尝试从PDF文本中提取关键财务数据
+        # 提取关键财务数据
         extracted = self._extract_key_figures(text, current_year)
         
-        if extracted['has_data']:
-            print(f"   从PDF中提取到财务数据")
-            self._fill_financial_data(financial_data, extracted)
-        else:
-            print(f"   未能从PDF中提取完整财务数据，使用样本数据")
-            self._create_sample_data_inplace(financial_data)
+        # 检查是否提取到足够的必要数据
+        current = extracted.get('current', {})
+        missing = []
+        if not current.get('operating_revenue'):
+            missing.append("营业收入")
+        if not current.get('net_profit') and not current.get('net_profit_attributable'):
+            missing.append("净利润")
+        
+        if missing:
+            raise DataExtractionError(
+                f"无法从PDF中提取关键财务数据: {', '.join(missing)}。"
+                f"请确认PDF为标准格式年报，或手动提供公司名称和报告年度"
+            )
+        
+        print(f"   从PDF中提取到财务数据")
+        self._fill_financial_data(financial_data, extracted)
     
     def _extract_key_figures(self, text: str, current_year: int) -> Dict[str, Any]:
         """从文本中提取关键财务数据"""
-        result = {
-            'has_data': False,
-            'current': {},
-            'previous': {}
-        }
+        result = {'current': {}, 'previous': {}}
         
-        # 提取营业收入（合并）
-        # 模式1: "营业收入 14,963,644,356.95 13,147,685,135.79"
-        # 模式2: "确认营业收入人民币14,963,644,356.95元"
+        # === 营业收入 ===
+        # 模式1: "确认营业收入人民币14,963,644,356.95元"
         rev_match = re.search(r'确认营业收入人民币([\d,]+\.?\d*)元', text)
         if rev_match:
             result['current']['operating_revenue'] = self._parse_number(rev_match.group(1))
         
-        # 从"营业收入和营业成本"附注中提取
+        # 模式2: "营业收入 14,963,644,356.95 13,147,685,135.79"（当年 上年）
+        if not result['current'].get('operating_revenue'):
+            rev_match2 = re.search(r'营业收入\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+            if rev_match2:
+                v1 = self._parse_number(rev_match2.group(1))
+                v2 = self._parse_number(rev_match2.group(2))
+                if v1 and v1 > 0:
+                    result['current']['operating_revenue'] = v1
+                    if v2 and v2 > 0:
+                        result['previous']['operating_revenue'] = v2
+        
+        # 模式3: 从"营业收入和营业成本"附注中提取
         rev_cost_match = re.search(
             r'营业收入和营业成本.*?合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*',
             text, re.DOTALL
         )
         if rev_cost_match:
-            if 'operating_revenue' not in result['current']:
+            if not result['current'].get('operating_revenue'):
                 result['current']['operating_revenue'] = self._parse_number(rev_cost_match.group(1))
-            result['previous']['operating_revenue'] = self._parse_number(rev_cost_match.group(2))
+            if not result['previous'].get('operating_revenue'):
+                result['previous']['operating_revenue'] = self._parse_number(rev_cost_match.group(2))
         
-        # 提取归母净利润
+        # === 归母净利润 ===
         np_match = re.search(
-            r'归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)',
-            text
+            r'归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
         )
         if np_match:
             result['current']['net_profit_attributable'] = self._parse_number(np_match.group(1))
@@ -188,55 +211,110 @@ class PDFDataExtractor:
             result['previous']['net_profit_attributable'] = self._parse_number(np_match.group(2))
             result['previous']['net_profit'] = self._parse_number(np_match.group(2))
         
-        # 提取经营活动现金流
+        # === 净利润（合并） ===
+        if not result['current'].get('net_profit'):
+            np_match2 = re.search(r'净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+            if np_match2:
+                v1 = self._parse_number(np_match2.group(1))
+                v2 = self._parse_number(np_match2.group(2))
+                if v1 and abs(v1) > 1000000:
+                    result['current']['net_profit'] = v1
+                    if v2 and abs(v2) > 1000000:
+                        result['previous']['net_profit'] = v2
+        
+        # === 经营活动现金流 ===
         ocf_match = re.search(
-            r'经营活动产生的现金流量净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)',
-            text
+            r'经营活动产生的现金流量净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
         )
         if ocf_match:
             result['current']['net_cash_flow_operating'] = self._parse_number(ocf_match.group(1))
             result['previous']['net_cash_flow_operating'] = self._parse_number(ocf_match.group(2))
         
-        # 提取负债合计
+        # === 销售商品收到的现金 ===
+        sales_cash_match = re.search(
+            r'销售商品、提供劳务收到的现金\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+        )
+        if sales_cash_match:
+            result['current']['cash_from_sales'] = self._parse_number(sales_cash_match.group(1))
+            result['previous']['cash_from_sales'] = self._parse_number(sales_cash_match.group(2))
+        
+        # === 负债合计 ===
         debt_match = re.search(
-            r'负债合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*',
-            text
+            r'负债合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text
         )
         if debt_match:
             result['current']['total_liabilities'] = self._parse_number(debt_match.group(1))
             result['previous']['total_liabilities'] = self._parse_number(debt_match.group(2))
         
-        # 提取存货（从审计报告关键审计事项中）
+        # === 资产总计 ===
+        # 尝试多种模式
+        asset_match = re.search(r'资产总计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text)
+        if not asset_match:
+            asset_match = re.search(r'资产总额\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text)
+        if asset_match:
+            result['current']['total_assets'] = self._parse_number(asset_match.group(1))
+            result['previous']['total_assets'] = self._parse_number(asset_match.group(2))
+        
+        # === 所有者权益合计 ===
+        equity_match = re.search(
+            r'所有者权益合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text
+        )
+        if equity_match:
+            result['current']['total_equity'] = self._parse_number(equity_match.group(1))
+            result['previous']['total_equity'] = self._parse_number(equity_match.group(2))
+        
+        # === 存货 ===
         inv_match = re.search(r'存货账面余额\s+([\d,]+\.?\d*)\s*元', text)
         if inv_match:
-            result['current']['inventory'] = self._parse_number(inv_match.group(1))
+            inventory = self._parse_number(inv_match.group(1))
+            # 减去跌价准备
+            inv_prov_match = re.search(r'存货跌价准备及.*?减值准备\s+([\d,]+\.?\d*)\s*元', text)
+            if inv_prov_match:
+                prov = self._parse_number(inv_prov_match.group(1))
+                if prov and inventory:
+                    inventory = inventory - prov
+            result['current']['inventory'] = inventory
         
-        # 提取存货跌价准备
-        inv_prov_match = re.search(r'存货跌价准备及.*?减值准备\s+([\d,]+\.?\d*)\s*元', text)
-        if inv_prov_match and result['current'].get('inventory'):
-            prov = self._parse_number(inv_prov_match.group(1))
-            if prov:
-                result['current']['inventory'] = result['current']['inventory'] - prov
+        # === 应收账款 ===
+        # 从附注中提取应收账款期末余额
+        ar_match = re.search(
+            r'按信用风险特征组合计提坏账准备.*?应收账款.*?([\d,]+\.?\d{2})\s+([\d,]+\.?\d{2})',
+            text, re.DOTALL
+        )
+        if ar_match:
+            result['current']['accounts_receivable'] = self._parse_number(ar_match.group(1))
         
-        # 判断是否提取到足够数据
-        current = result['current']
-        required = ['operating_revenue', 'net_profit']
-        has_current = all(current.get(k) is not None and current.get(k) > 0 for k in required)
+        # === 非经常性损益 ===
+        nri_match = re.search(r'非经常性损益\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+        if not nri_match:
+            nri_match = re.search(r'非经常性损益净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+        if nri_match:
+            result['current']['non_recurring_profit'] = self._parse_number(nri_match.group(1))
+            result['previous']['non_recurring_profit'] = self._parse_number(nri_match.group(2))
         
-        previous = result['previous']
-        has_previous = any(previous.get(k) is not None and previous.get(k) > 0 for k in ['operating_revenue', 'net_profit'])
+        # === 扣非净利润 ===
+        core_match = re.search(
+            r'扣除非经常性损益后归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+        )
+        if core_match:
+            result['current']['core_profit'] = self._parse_number(core_match.group(1))
+            result['previous']['core_profit'] = self._parse_number(core_match.group(2))
         
-        result['has_data'] = has_current
-        
-        if has_current and not has_previous:
-            print(f"   注意：未提取到上年度数据，趋势分析将不可用")
+        # === 营业成本 ===
+        cost_match = re.search(r'营业成本\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+        if cost_match:
+            v1 = self._parse_number(cost_match.group(1))
+            v2 = self._parse_number(cost_match.group(2))
+            if v1 and v1 > 0:
+                result['current']['operating_cost'] = v1
+                result['previous']['operating_cost'] = v2
         
         return result
     
     def _fill_financial_data(self, financial_data: FinancialData, extracted: Dict):
         """用提取的数据填充FinancialData"""
-        current = extracted['current']
-        previous = extracted['previous']
+        current = extracted.get('current', {})
+        previous = extracted.get('previous', {})
         
         # 当前年度
         stmt = financial_data.current_year
@@ -244,49 +322,39 @@ class PDFDataExtractor:
             if value is not None:
                 setattr(stmt, key, value)
         
-        # 估算缺失的资产负债表数据
-        if stmt.total_assets == 0 and stmt.total_liabilities > 0:
-            # 用负债/资产负债率估算，假设60%资产负债率
-            stmt.total_assets = stmt.total_liabilities / 0.6
+        # 计算毛利润
+        if stmt.gross_profit == 0 and stmt.operating_revenue > 0 and stmt.operating_cost > 0:
+            stmt.gross_profit = stmt.operating_revenue - stmt.operating_cost
+        
+        # 计算所有者权益（如果缺失）
+        if stmt.total_equity == 0 and stmt.total_assets > 0 and stmt.total_liabilities > 0:
             stmt.total_equity = stmt.total_assets - stmt.total_liabilities
         
-        if stmt.gross_profit == 0 and stmt.operating_revenue > 0:
-            stmt.gross_profit = stmt.operating_revenue * 0.25
+        # 计算总资产（如果缺失但有权益和负债）
+        if stmt.total_assets == 0 and stmt.total_equity > 0 and stmt.total_liabilities > 0:
+            stmt.total_assets = stmt.total_equity + stmt.total_liabilities
         
         # 历史年度
         if previous:
             prev_stmt = FinancialStatement()
+            has_prev_data = False
             for key, value in previous.items():
                 if value is not None:
                     setattr(prev_stmt, key, value)
-            if prev_stmt.gross_profit == 0 and prev_stmt.operating_revenue > 0:
-                prev_stmt.gross_profit = prev_stmt.operating_revenue * 0.25
-            financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
-    
-    def _create_sample_data_inplace(self, financial_data: FinancialData):
-        """在原地填充样本数据"""
-        if not financial_data.company_name:
-            financial_data.company_name = "未知公司"
-        
-        stmt = financial_data.current_year
-        stmt.operating_revenue = 1000000000
-        stmt.net_profit = 150000000
-        stmt.net_profit_attributable = 150000000
-        stmt.net_cash_flow_operating = 180000000
-        stmt.total_assets = 2000000000
-        stmt.total_liabilities = 800000000
-        stmt.total_equity = 1200000000
-        stmt.current_assets = 800000000
-        stmt.current_liabilities = 400000000
-        stmt.inventory = 200000000
-        stmt.accounts_receivable = 300000000
-        stmt.gross_profit = 300000000
-        
-        prev_stmt = FinancialStatement()
-        prev_stmt.operating_revenue = 900000000
-        prev_stmt.net_profit = 140000000
-        prev_stmt.net_cash_flow_operating = 170000000
-        financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
+                    has_prev_data = True
+            
+            if has_prev_data:
+                if prev_stmt.gross_profit == 0 and prev_stmt.operating_revenue > 0 and prev_stmt.operating_cost > 0:
+                    prev_stmt.gross_profit = prev_stmt.operating_revenue - prev_stmt.operating_cost
+                if prev_stmt.total_equity == 0 and prev_stmt.total_assets > 0 and prev_stmt.total_liabilities > 0:
+                    prev_stmt.total_equity = prev_stmt.total_assets - prev_stmt.total_liabilities
+                if prev_stmt.total_assets == 0 and prev_stmt.total_equity > 0 and prev_stmt.total_liabilities > 0:
+                    prev_stmt.total_assets = prev_stmt.total_equity + prev_stmt.total_liabilities
+                financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
+            else:
+                print(f"   注意：未提取到上年度数据，趋势分析将不可用")
+        else:
+            print(f"   注意：未提取到上年度数据，趋势分析将不可用")
     
     def _parse_notes(self, financial_data: FinancialData):
         """解析附注信息"""
@@ -309,41 +377,3 @@ class PDFDataExtractor:
                 else:
                     value = match.group(1)
                     financial_data.notes[key] = value
-    
-    def _create_sample_data(self) -> FinancialData:
-        """创建样本数据（当PDF解析失败时使用）"""
-        print("使用样本数据进行模拟分析...")
-        
-        financial_data = FinancialData()
-        financial_data.company_name = "示例公司"
-        financial_data.stock_code = "000000"
-        financial_data.report_year = 2025
-        financial_data.report_date = "2025-12-31"
-        financial_data.auditor = "示例会计师事务所"
-        financial_data.audit_opinion = "标准无保留意见"
-        
-        current = FinancialStatement()
-        current.operating_revenue = 1000000000
-        current.net_profit = 150000000
-        current.net_profit_attributable = 150000000
-        current.net_cash_flow_operating = 180000000
-        current.total_assets = 2000000000
-        current.total_liabilities = 800000000
-        current.total_equity = 1200000000
-        current.current_assets = 800000000
-        current.current_liabilities = 400000000
-        current.inventory = 200000000
-        current.accounts_receivable = 300000000
-        current.gross_profit = 300000000
-        
-        financial_data.current_year = current
-        
-        prev_year = FinancialStatement()
-        prev_year.operating_revenue = 900000000
-        prev_year.net_profit = 140000000
-        prev_year.net_cash_flow_operating = 170000000
-        financial_data.historical_data[2024] = prev_year
-        
-        financial_data.current_year.calculate_ratios()
-        
-        return financial_data

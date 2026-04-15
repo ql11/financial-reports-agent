@@ -482,20 +482,18 @@ class FraudDetector:
         """检测历史违规"""
         indicators = []
         
-        # 这里可以根据公司名称或股票代码检查历史违规记录
-        # 在实际应用中，可以连接数据库或API查询
-        
-        # 示例：英洛华有历史违规记录
-        if "英洛华" in financial_data.company_name:
+        # 检查附注中是否有历史违规信息
+        if "historical_violations" in financial_data.notes:
+            violation_info = financial_data.notes["historical_violations"]
             indicator = FraudIndicator(
                 type=FraudType.AUDIT_ISSUE,
                 name="历史违规记录",
-                description="公司有历史违规记录，2021年被浙江证监局警示",
+                description=f"公司有历史违规记录: {violation_info}",
                 risk_level=RiskLevel.HIGH,
                 score=2.5,
                 evidence=[
-                    "2021年被浙江证监局出具警示函",
-                    "存在历史违规记录"
+                    f"历史违规: {violation_info}",
+                    "存在历史违规记录，治理风险较高"
                 ],
                 recommendations=[
                     "关注公司治理结构",
