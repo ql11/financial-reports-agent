@@ -25,12 +25,12 @@ class RiskAssessment:
         
         self.total_score = sum(pattern.total_score for pattern in self.fraud_patterns)
         
-        # 根据总分确定风险等级
-        if self.total_score >= 30:
+        # 根据总分确定风险等级（与risk_assessor的阈值对齐）
+        if self.total_score >= 35:
             self.risk_level = RiskLevel.CRITICAL
-        elif self.total_score >= 20:
+        elif self.total_score >= 22:
             self.risk_level = RiskLevel.HIGH
-        elif self.total_score >= 10:
+        elif self.total_score >= 12:
             self.risk_level = RiskLevel.MEDIUM
         else:
             self.risk_level = RiskLevel.LOW
