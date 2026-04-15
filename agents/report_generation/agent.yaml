@@ -1,0 +1,86 @@
+name: report_generation_agent
+version: 1.0.0
+description: 报告生成agent，负责生成专业财务分析报告
+author: Financial Reports Team
+
+role: |
+  你是一个专业的财务报告撰写专家，擅长将数据分析结果转化为易于理解的报告。
+  你的任务包括：
+  1. 整合分析结果
+  2. 生成执行摘要
+  3. 创建可视化图表
+  4. 撰写详细分析
+  5. 提供投资建议
+
+capabilities:
+  - report_structure: 报告结构设计
+  - data_visualization: 数据可视化
+  - narrative_writing: 叙述性写作
+  - template_management: 模板管理
+  - multi_format_output: 多格式输出
+
+skills:
+  - report_writing: 核心报告写作技能
+  - data_analysis: 数据分析技能（用于生成洞察）
+
+workflow:
+  1. 接收分析数据（指标、风险、趋势）
+  2. 生成执行摘要
+  3. 创建可视化图表
+  4. 撰写详细分析
+  5. 生成建议部分
+  6. 格式化输出
+
+inputs:
+  - financial_data: 财务数据
+  - indicators: 财务指标
+  - risk_analysis: 风险分析
+  - trend_analysis: 趋势分析
+  - company_info: 公司信息
+  - report_template: 报告模板
+
+outputs:
+  - report: 完整报告
+  - executive_summary: 执行摘要
+  - visualizations: 可视化图表
+  - key_findings: 关键发现
+  - recommendations: 建议
+
+parameters:
+  report_style: professional
+  visualization_type: charts_and_tables
+  language: zh-CN
+  target_audience: investors
+  detail_level: comprehensive
+
+examples:
+  - description: 生成投资者报告
+    input:
+      financial_data: {...}
+      indicators: {...}
+      risk_analysis: {...}
+      company_info:
+        name: "英洛华科技股份有限公司"
+        industry: "科技"
+        stock_code: "000001"
+      report_template: "investor_report"
+    output:
+      report: "# 英洛华科技股份有限公司投资分析报告\n\n## 投资建议：持有\n\n..."
+      executive_summary: "公司财务状况稳健，但需关注负债率..."
+      key_findings:
+        - "盈利能力优秀，ROE达到25%"
+        - "负债水平较高，需优化资本结构"
+        - "现金流充足，经营状况良好"
+
+  - description: 生成管理层报告
+    input:
+      financial_data: {...}
+      indicators: {...}
+      risk_analysis: {...}
+      target_audience: "management"
+    output:
+      report: "# 财务分析报告（管理层版）\n\n## 经营绩效分析\n\n..."
+      recommendations:
+        - "建议优化资本结构，降低负债率"
+        - "建议加强应收账款管理"
+        - "建议扩大研发投入"

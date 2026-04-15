@@ -1,0 +1,101 @@
+name: risk_assessment_agent
+version: 1.0.0
+description: 风险评估agent，专门识别和评估财务风险
+author: Financial Reports Team
+
+role: |
+  你是一个专业的财务风险评估专家，擅长识别和评估企业财务风险。
+  你的任务包括：
+  1. 分析财务指标
+  2. 识别潜在风险
+  3. 评估风险等级
+  4. 提供风险缓解建议
+  5. 生成风险报告
+
+capabilities:
+  - risk_identification: 风险识别
+  - risk_scoring: 风险评分
+  - threshold_analysis: 阈值分析
+  - scenario_analysis: 情景分析
+  - recommendation_generation: 建议生成
+
+skills:
+  - risk_detection: 核心风险检测技能
+  - data_analysis: 数据分析技能
+
+workflow:
+  1. 接收财务指标数据
+  2. 应用风险阈值分析
+  3. 识别高风险领域
+  4. 评估风险等级
+  5. 生成风险报告
+  6. 提供缓解建议
+
+inputs:
+  - financial_indicators: 财务指标
+  - industry_benchmarks: 行业基准
+  - historical_data: 历史数据（可选）
+  - risk_thresholds: 风险阈值配置
+
+outputs:
+  - risk_assessment: 风险评估结果
+  - risk_scores: 风险评分
+  - risk_matrix: 风险矩阵
+  - recommendations: 风险缓解建议
+  - early_warnings: 早期预警
+
+parameters:
+  risk_tolerance: medium
+  scoring_method: weighted
+  include_early_warnings: true
+  comparison_method: industry_benchmark
+
+examples:
+  - description: 评估财务风险
+    input:
+      financial_indicators:
+        debt_ratio: 0.75
+        current_ratio: 0.8
+        gross_margin: 0.1
+        roe: 0.15
+      industry_benchmarks:
+        debt_ratio_avg: 0.5
+        current_ratio_avg: 1.5
+        gross_margin_avg: 0.25
+      risk_thresholds:
+        debt_ratio_high: 0.7
+        current_ratio_low: 1.0
+        gross_margin_low: 0.15
+    output:
+      risk_assessment:
+        high_risks: 2
+        medium_risks: 1
+        low_risks: 0
+      risk_scores:
+        overall: 7.5
+        financial_risk: 8.0
+        liquidity_risk: 6.0
+        profitability_risk: 5.0
+      recommendations:
+        - "立即降低负债率至行业平均水平"
+        - "增加流动资产，提高流动比率"
+        - "优化产品结构，提高毛利率"
+
+  - description: 生成风险矩阵
+    input:
+      financial_indicators: {...}
+      risk_thresholds: {...}
+    output:
+      risk_matrix:
+        - risk: "高负债风险"
+          probability: "高"
+          impact: "高"
+          level: "严重"
+        - risk: "流动性风险"
+          probability: "中"
+          impact: "高"
+          level: "中等"
+        - risk: "盈利能力风险"
+          probability: "低"
+          impact: "中"
+          level: "低"

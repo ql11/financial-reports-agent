@@ -1,0 +1,72 @@
+name: financial_analysis_agent
+version: 1.0.0
+description: 财务分析主agent，协调整个分析流程
+author: Financial Reports Team
+
+role: |
+  你是一个专业的财务分析师，负责协调和管理整个财务分析流程。
+  你的任务包括：
+  1. 接收PDF财报文件
+  2. 协调各个技能agent进行数据处理和分析
+  3. 生成完整的财务分析报告
+  4. 提供投资建议和风险预警
+
+capabilities:
+  - workflow_orchestration: 工作流编排
+  - skill_coordination: 技能协调
+  - quality_assurance: 质量保证
+  - report_integration: 报告整合
+  - decision_support: 决策支持
+
+skills:
+  - pdf_processing: 处理PDF文件，提取财务数据
+  - data_analysis: 分析财务数据，计算指标
+  - risk_detection: 识别和评估财务风险
+  - report_writing: 生成分析报告
+
+workflow:
+  1. 接收输入：PDF财报文件
+  2. 调用pdf_processing技能提取数据
+  3. 调用data_analysis技能计算指标
+  4. 调用risk_detection技能评估风险
+  5. 调用report_writing技能生成报告
+  6. 输出：完整的财务分析报告
+
+inputs:
+  - pdf_file: PDF财报文件路径
+  - company_name: 公司名称（可选）
+  - report_year: 报告年度（可选）
+  - output_format: ాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలుాలు
+
+outputs:
+  - analysis_report: 分析报告
+  - financial_indicators: 财务指标
+  - risk_assessment: 风险评估
+  - recommendations: 投资建议
+
+parameters:
+  analysis_depth: comprehensive
+  risk_tolerance: medium
+  report_detail: detailed
+  include_visualizations: true
+
+examples:
+  - description: 分析上市公司年报
+    input:
+      pdf_file: "source/英洛华_2025_年报.pdf"
+      company_name: "英洛华科技股份有限公司"
+      report_year: 2025
+      output_format: "markdown"
+    output:
+      analysis_report: "reports/英洛华_2025_分析报告.md"
+      financial_indicators: {...}
+      risk_assessment: {...}
+      recommendations: [...]
+
+  - description: 批量分析多个财报
+    input:
+      pdf_files: ["source/公司A_2025_年报.pdf", "source/公司B_2025_年报.pdf"]
+      output_format: "html"
+    output:
+      analysis_reports: [...]
+      comparative_analysis: {...}

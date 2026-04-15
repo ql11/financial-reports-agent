@@ -1,0 +1,74 @@
+name: risk_detection
+version: 1.0.0
+description: 财务风险识别和评估技能
+author: Financial Reports Team
+
+capabilities:
+  - risk_identification: 识别财务风险
+  - risk_assessment: 评估风险等级
+  - threshold_analysis: 阈值分析
+  - risk_scoring: 风险评分
+  - recommendation_generation: 生成风险缓解建议
+
+inputs:
+  - financial_indicators: 财务指标数据
+  - risk_thresholds: 风险阈值配置
+  - company_info: 公司信息
+  - industry_data: 行业数据
+
+outputs:
+  - risk_list: 风险清单
+  - risk_scores: 风险评分
+  - recommendations: 风险缓解建议
+  - risk_summary: 风险摘要
+  - risk_matrix: 风险矩阵
+
+parameters:
+  risk_levels:
+    high: 0.7
+    medium: 0.4
+    low: 0.1
+  scoring_method: weighted_average
+  include_warnings: true
+
+dependencies:
+  - pandas>=2.0.0
+  - numpy>=1.24.0
+
+examples:
+  - description: 识别财务风险
+    input:
+      financial_indicators:
+        debt_ratio: 0.75
+        current_ratio: 0.8
+        gross_margin: 0.1
+      risk_thresholds:
+        debt_ratio_high: 0.7
+        current_ratio_low: 1.0
+        gross_margin_low: 0.15
+    output:
+      risk_list:
+        - type: "financial"
+          level: "high"
+          description: "资产负债率过高"
+          indicator: "debt_ratio"
+          value: 0.75
+          threshold: 0.7
+          recommendation: "优化资本结构，降低负债比例"
+        - type: "liquidity"
+          level: "medium"
+          description: "流动比率偏低"
+          indicator: "current_ratio"
+          value: 0.8
+          threshold: 1.0
+          recommendation: "增加流动资产，减少流动负债"
+
+  - description: 风险评分
+    input:
+      risk_list: [...]
+    output:
+      risk_scores:
+        overall: 6.5
+        financial: 8.0
+        liquidity: 5.0
+        profitability: 4.0

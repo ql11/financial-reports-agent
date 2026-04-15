@@ -1,0 +1,69 @@
+name: data_analysis
+version: 1.0.0
+description: 财务数据分析和指标计算技能
+author: Financial Reports Team
+
+capabilities:
+  - financial_indicators: 计算财务指标（盈利能力、偿债能力、运营能力、成长能力、现金流）
+  - trend_analysis: 趋势分析和对比分析
+  - ratio_analysis: 财务比率分析
+  - benchmark_comparison: 行业基准对比
+  - anomaly_detection: 异常值检测
+
+inputs:
+  - financial_data: 结构化财务数据
+  - historical_data: 历史数据（可选）
+  - industry_benchmarks: 行业基准数据
+  - analysis_period: 分析期间
+
+outputs:
+  - indicators: 财务指标计算结果
+  - trend_analysis: 趋势分析结果
+  - benchmarks: 基准对比结果
+  - anomalies: 检测到的异常值
+  - insights: 分析洞察
+
+parameters:
+  indicators_to_calculate:
+    - profitability: true
+    - solvency: true
+    - operation: true
+    - growth: true
+    - cash_flow: true
+  trend_periods: 5
+  confidence_level: 0.95
+
+dependencies:
+  - pandas>=2.0.0
+  - numpy>=1.24.0
+  - scipy>=1.10.0
+  - scikit-learn>=1.3.0
+
+examples:
+  - description: 计算财务指标
+    input:
+      financial_data:
+        balance_sheet: {...}
+        income_statement: {...}
+        cash_flow_statement: {...}
+    output:
+      indicators:
+        profitability:
+          gross_margin: 0.375
+          net_margin: 0.1875
+          roe: 0.25
+          roa: 0.15
+        solvency:
+          debt_ratio: 0.4
+          current_ratio: 2.5
+          quick_ratio: 1.75
+
+  - description: 趋势分析
+    input:
+      financial_data: [...]
+      historical_data: [...]
+    output:
+      trend_analysis:
+        revenue_growth: 0.15
+        profit_growth: 0.12
+        trend_direction: "upward"

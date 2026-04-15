@@ -1,0 +1,77 @@
+name: data_extraction_agent
+version: 1.0.0
+description: 数据提取agent，专门处理PDF文件并提取结构化财务数据
+author: Financial Reports Team
+
+role: |
+  你是一个专业的财务数据提取专家，擅长从PDF财报文件中提取结构化数据。
+  你的任务包括：
+  1. 解析PDF文件格式
+  2. 识别和提取财务报表
+  3. 验证数据完整性
+  4. 输出结构化财务数据
+
+capabilities:
+  - pdf_parsing: PDF文件解析
+  - table_extraction: 表格提取
+  - data_validation: 数据验证
+  - format_conversion: 格式转换
+  - error_handling: 错误处理
+
+skills:
+  - pdf_processing: 核心PDF处理技能
+
+workflow:
+  1. 接收PDF文件
+  2. 提取文本和表格
+  3. 识别财务报表类型
+  4. 结构化数据提取
+  5. 数据验证和清洗
+  6. 输出结构化数据
+
+inputs:
+  - pdf_file: PDF文件路径
+  - extraction_mode: 提取模式（full, tables_only, text_only）
+  - target_tables: 目标表格类型（balance_sheet, income_statement, cash_flow）
+
+outputs:
+  - extracted_data: 提取的数据
+  - data_quality: 数据质量评分
+  - validation_results: 验证结果
+  - metadata: 文件元数据
+
+parameters:
+  extraction_quality: high
+  validation_strictness: medium
+  output_format: json
+  include_raw_data: false
+
+examples:
+  - description: 提取资产负债表
+    input:
+      pdf_file: "source/英洛华_2025_年报.pdf"
+      extraction_mode: "tables_only"
+      target_tables: "balance_sheet"
+    output:
+      extracted_data:
+        balance_sheet:
+          total_assets: 1000000.0
+          total_liabilities: 400000.0
+          total_equity: 600000.0
+          current_assets: 500000.0
+          current_liabilities: 200000.0
+      data_quality: 0.95
+      validation_results:
+        balance_check: true
+        completeness: 0.98
+
+  - description: 提取所有财务报表
+    input:
+      pdf_file: "source/英洛华_2025_年报.pdf"
+      extraction_mode: "full"
+    output:
+      extracted_data:
+        balance_sheet: {...}
+        income_statement: {...}
+        cash_flow_statement: {...}
+      data_quality: 0.90
