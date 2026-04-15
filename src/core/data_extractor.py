@@ -98,9 +98,9 @@ class PDFDataExtractor:
         """解析公司信息"""
         text = self.text_content
         
-        # 从审计报告首页提取公司名（如"曙光信息产业股份有限公司"）
+        # 从审计报告首页提取公司名：匹配"XX股份有限公司"或"XX有限公司"
         match = re.search(
-            r'^([\u4e00-\u9fa5]{2,6}(?:股份|集团|科技|信息|产业|电子|机械|医药|能源|材料|通讯|网络|软件|电气|重工|建设|交通|资本|控股)[\u4e00-\u9fa5]*有限公司)',
+            r'^([\u4e00-\u9fa5]{2,10}(?:股份有限公司|有限责任公司|有限公司))',
             text, re.MULTILINE
         )
         if match:
@@ -170,7 +170,11 @@ class PDFDataExtractor:
         self._fill_financial_data(financial_data, extracted)
     
     def _extract_key_figures(self, text: str, current_year: int) -> Dict[str, Any]:
-        """从文本中提取关键财务数据"""
+        """从文本中提取关键财务数据
+
+        注意：财务数据可能为负数（如亏损公司的净利润），
+        所有数值正则都使用 -?[\\d,]+\\.?\\d* 支持负数
+        """
         result = {'current': {}, 'previous': {}}
         
         # === 营业收入 ===
@@ -179,20 +183,20 @@ class PDFDataExtractor:
         if rev_match:
             result['current']['operating_revenue'] = self._parse_number(rev_match.group(1))
         
-        # 模式2: "营业收入 14,963,644,356.95 13,147,685,135.79"（当年 上年）
+        # 模式2: "营业收入 1,409,589,241.88 1,925,035,103.92"（当年 上年）
         if not result['current'].get('operating_revenue'):
-            rev_match2 = re.search(r'营业收入\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+            rev_match2 = re.search(r'营业收入\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
             if rev_match2:
                 v1 = self._parse_number(rev_match2.group(1))
                 v2 = self._parse_number(rev_match2.group(2))
-                if v1 and v1 > 0:
+                if v1 and abs(v1) > 1000000:
                     result['current']['operating_revenue'] = v1
-                    if v2 and v2 > 0:
+                    if v2 and abs(v2) > 1000000:
                         result['previous']['operating_revenue'] = v2
         
         # 模式3: 从"营业收入和营业成本"附注中提取
         rev_cost_match = re.search(
-            r'营业收入和营业成本.*?合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*',
+            r'营业收入和营业成本.*?合计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*',
             text, re.DOTALL
         )
         if rev_cost_match:
@@ -203,7 +207,7 @@ class PDFDataExtractor:
         
         # === 归母净利润 ===
         np_match = re.search(
-            r'归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+            r'归属于母公司所有者的净利润\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
         )
         if np_match:
             result['current']['net_profit_attributable'] = self._parse_number(np_match.group(1))
@@ -211,9 +215,20 @@ class PDFDataExtractor:
             result['previous']['net_profit_attributable'] = self._parse_number(np_match.group(2))
             result['previous']['net_profit'] = self._parse_number(np_match.group(2))
         
+        # 归属于上市公司股东的净利润（另一种表述）
+        if not result['current'].get('net_profit'):
+            np_match_alt = re.search(
+                r'归属于上市公司股东的净利润\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
+            )
+            if np_match_alt:
+                result['current']['net_profit_attributable'] = self._parse_number(np_match_alt.group(1))
+                result['current']['net_profit'] = self._parse_number(np_match_alt.group(1))
+                result['previous']['net_profit_attributable'] = self._parse_number(np_match_alt.group(2))
+                result['previous']['net_profit'] = self._parse_number(np_match_alt.group(2))
+        
         # === 净利润（合并） ===
         if not result['current'].get('net_profit'):
-            np_match2 = re.search(r'净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+            np_match2 = re.search(r'净利润\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
             if np_match2:
                 v1 = self._parse_number(np_match2.group(1))
                 v2 = self._parse_number(np_match2.group(2))
@@ -224,7 +239,7 @@ class PDFDataExtractor:
         
         # === 经营活动现金流 ===
         ocf_match = re.search(
-            r'经营活动产生的现金流量净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+            r'经营活动产生的现金流量净额\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
         )
         if ocf_match:
             result['current']['net_cash_flow_operating'] = self._parse_number(ocf_match.group(1))
@@ -232,7 +247,7 @@ class PDFDataExtractor:
         
         # === 销售商品收到的现金 ===
         sales_cash_match = re.search(
-            r'销售商品、提供劳务收到的现金\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+            r'销售商品、提供劳务收到的现金\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
         )
         if sales_cash_match:
             result['current']['cash_from_sales'] = self._parse_number(sales_cash_match.group(1))
@@ -240,35 +255,34 @@ class PDFDataExtractor:
         
         # === 负债合计 ===
         debt_match = re.search(
-            r'负债合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text
+            r'负债合计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text
         )
         if debt_match:
             result['current']['total_liabilities'] = self._parse_number(debt_match.group(1))
             result['previous']['total_liabilities'] = self._parse_number(debt_match.group(2))
         
         # === 资产总计 ===
-        # 尝试多种模式
-        asset_match = re.search(r'资产总计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text)
+        asset_match = re.search(r'资产总计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text)
         if not asset_match:
-            asset_match = re.search(r'资产总额\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text)
+            asset_match = re.search(r'资产总额\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text)
         if asset_match:
             result['current']['total_assets'] = self._parse_number(asset_match.group(1))
             result['previous']['total_assets'] = self._parse_number(asset_match.group(2))
         
         # === 所有者权益合计 ===
         equity_match = re.search(
-            r'所有者权益合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*', text
+            r'所有者权益合计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text
         )
         if equity_match:
             result['current']['total_equity'] = self._parse_number(equity_match.group(1))
             result['previous']['total_equity'] = self._parse_number(equity_match.group(2))
         
         # === 存货 ===
-        inv_match = re.search(r'存货账面余额\s+([\d,]+\.?\d*)\s*元', text)
+        inv_match = re.search(r'存货账面余额\s+(-?[\d,]+\.?\d*)\s*元', text)
         if inv_match:
             inventory = self._parse_number(inv_match.group(1))
             # 减去跌价准备
-            inv_prov_match = re.search(r'存货跌价准备及.*?减值准备\s+([\d,]+\.?\d*)\s*元', text)
+            inv_prov_match = re.search(r'存货跌价准备及.*?减值准备\s+(-?[\d,]+\.?\d*)\s*元', text)
             if inv_prov_match:
                 prov = self._parse_number(inv_prov_match.group(1))
                 if prov and inventory:
@@ -276,36 +290,39 @@ class PDFDataExtractor:
             result['current']['inventory'] = inventory
         
         # === 应收账款 ===
-        # 从附注中提取应收账款期末余额
         ar_match = re.search(
-            r'按信用风险特征组合计提坏账准备.*?应收账款.*?([\d,]+\.?\d{2})\s+([\d,]+\.?\d{2})',
+            r'按信用风险特征组合计提坏账准备.*?应收账款.*?(-?[\d,]+\.?\d{2})\s+(-?[\d,]+\.?\d{2})',
             text, re.DOTALL
         )
         if ar_match:
             result['current']['accounts_receivable'] = self._parse_number(ar_match.group(1))
         
         # === 非经常性损益 ===
-        nri_match = re.search(r'非经常性损益\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+        nri_match = re.search(r'非经常性损益\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
         if not nri_match:
-            nri_match = re.search(r'非经常性损益净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+            nri_match = re.search(r'非经常性损益净额\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
         if nri_match:
             result['current']['non_recurring_profit'] = self._parse_number(nri_match.group(1))
             result['previous']['non_recurring_profit'] = self._parse_number(nri_match.group(2))
         
         # === 扣非净利润 ===
         core_match = re.search(
-            r'扣除非经常性损益后归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text
+            r'扣除非经常性损益后归属于母公司所有者的净利润\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
         )
+        if not core_match:
+            core_match = re.search(
+                r'扣除非经常性损益后归属于上市公司股东的净利润\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text
+            )
         if core_match:
             result['current']['core_profit'] = self._parse_number(core_match.group(1))
             result['previous']['core_profit'] = self._parse_number(core_match.group(2))
         
         # === 营业成本 ===
-        cost_match = re.search(r'营业成本\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)', text)
+        cost_match = re.search(r'营业成本\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
         if cost_match:
             v1 = self._parse_number(cost_match.group(1))
             v2 = self._parse_number(cost_match.group(2))
-            if v1 and v1 > 0:
+            if v1 and abs(v1) > 1000000:
                 result['current']['operating_cost'] = v1
                 result['previous']['operating_cost'] = v2
         
