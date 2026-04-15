@@ -1,14 +1,19 @@
 name: report_writing
-version: 1.0.0
-description: 财务分析报告生成技能
+version: 2.0.0
+description: 财务分析报告生成技能，支持role.md定义的输出格式
 author: Financial Reports Team
 
 capabilities:
-  - report_generation: 生成财务分析报告
+  - report_generation: 生成财务分析报告（按role.md标准格式）
   - template_rendering: 模板渲染
   - data_visualization: 数据可视化
-  - executive_summary: 生成执行摘要
-  - recommendation_synthesis: 建议综合
+  - executive_summary: 生成执行摘要（核心结论）
+  - key_indicators_table: 生成关键指标一览表
+  - detailed_analysis: 生成详细分析（按分析维度）
+  - risk_warnings: 生成风险提示
+  - comprehensive_scoring: 生成综合评分（1-10分）
+  - fraud_analysis_report: 生成财报造假分析报告
+  - investment_recommendations: 生成投资建议
 
 inputs:
   - financial_data: 财务数据

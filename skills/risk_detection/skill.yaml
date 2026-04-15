@@ -1,10 +1,13 @@
 name: risk_detection
-version: 1.0.0
-description: 财务风险识别和评估技能
+version: 2.0.0
+description: 财务风险识别和评估技能，特别关注财报造假检测
 author: Financial Reports Team
 
 capabilities:
-  - risk_identification: 识别财务风险
+  - financial_risk_identification: 识别财务风险信号
+  - operational_risk_identification: 识别经营风险提示
+  - potential_problem_warning: 潜在问题预警
+  - fraud_detection: 财报造假方法识别和逻辑提炼
   - risk_assessment: 评估风险等级
   - threshold_analysis: 阈值分析
   - risk_scoring: 风险评分

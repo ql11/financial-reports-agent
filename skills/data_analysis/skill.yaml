@@ -1,11 +1,15 @@
 name: data_analysis
-version: 1.0.0
-description: 财务数据分析和指标计算技能
+version: 2.0.0
+description: 财务数据分析和指标计算技能，支持role.md定义的所有分析维度
 author: Financial Reports Team
 
 capabilities:
-  - financial_indicators: 计算财务指标（盈利能力、偿债能力、运营能力、成长能力、现金流）
-  - trend_analysis: 趋势分析和对比分析
+  - core_financial_indicators: 计算核心财务指标（盈利能力、偿债能力、运营能力、成长能力）
+  - financial_statement_analysis: 三大报表分析（资产负债表、利润表、现金流量表）
+  - trend_analysis: 多年数据趋势分析
+  - industry_comparison: 与行业均值对比
+  - peer_comparison: 与同行公司对比
+  - seasonal_analysis: 季节性分析
   - ratio_analysis: 财务比率分析
   - benchmark_comparison: 行业基准对比
   - anomaly_detection: 异常值检测
