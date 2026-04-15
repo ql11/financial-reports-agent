@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 from src.utils.logger import get_logger
 from src.utils.config_loader import ConfigLoader
 from src.utils.file_manager import FileManager
-from src.core.pdf_table_extractor import extract_tables_from_pdf
+from src.core.pdf_table_extractor import extract_pdf_tables
 from src.core.data_extractor import extract_financial_data
 from src.core.indicator_calculator import calculate_indicators
 from src.core.trend_analyzer import analyze_trend
@@ -144,7 +144,7 @@ def analyze_single_pdf(
         report_filename = f"{company_name}_{report_year}_分析报告.md"
         report_path = Path(output_dir) / report_filename
         
-        file_manager.write_file(str(report_path), report)
+        file_manager.write_text(str(report_path), report)
         logger.info(f"报告已保存: {report_path}")
         
         logger.info(f"✅ 文件分析完成: {pdf_path}")
