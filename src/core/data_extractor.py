@@ -19,14 +19,7 @@ class PDFDataExtractor:
         self.tables = []
         
     def extract_from_pdf(self, pdf_path: str) -> FinancialData:
-        """从PDF提取财务数据
-        
-        Args:
-            pdf_path: PDF文件路径
-            
-        Returns:
-            FinancialData: 提取的财务数据
-        """
+        """从PDF提取财务数据"""
         pdf_path = Path(pdf_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF文件不存在: {pdf_path}")
@@ -40,10 +33,6 @@ class PDFDataExtractor:
             # 解析公司信息
             self._parse_company_info(financial_data)
             
-            # 如果公司名未从PDF中提取到，默认使用英洛华科技
-            if not financial_data.company_name:
-                financial_data.company_name = "英洛华科技"
-            
             # 解析财务数据
             self._parse_financial_statements(financial_data)
             
@@ -52,12 +41,13 @@ class PDFDataExtractor:
             
             # 计算财务比率
             financial_data.current_year.calculate_ratios()
+            for year_data in financial_data.historical_data.values():
+                year_data.calculate_ratios()
             
             return financial_data
             
         except Exception as e:
             print(f"PDF数据提取错误: {e}")
-            # 如果PDF解析失败，使用模拟数据
             return self._create_sample_data()
     
     def _extract_text(self, pdf_path: Path):
@@ -86,90 +76,220 @@ class PDFDataExtractor:
     
     def _parse_company_info(self, financial_data: FinancialData):
         """解析公司信息"""
-        # 尝试从文本中提取公司信息
-        patterns = {
-            "company_name": r"公司名称[：:]\s*([^\n]+)",
-            "stock_code": r"股票代码[：:]\s*([0-9]{6})",
-            "report_year": r"(\d{4})年[度]?\s*(?:报告|年报)",
-            "auditor": r"会计师事务所[：:]\s*([^\n]+)",
-            "audit_opinion": r"审计意见[：:]\s*([^\n]+)"
-        }
+        # 从审计报告首页提取公司名（如"曙光信息产业股份有限公司"）
+        match = re.search(r'^([\u4e00-\u9fa5]+(?:股份|集团|科技|信息|产业|电子|机械|医药|能源|材料)[\u4e00-\u9fa5]*有限公司)', self.text_content, re.MULTILINE)
+        if match:
+            financial_data.company_name = match.group(1).strip()
         
-        for key, pattern in patterns.items():
-            match = re.search(pattern, self.text_content)
+        # 其他模式
+        if not financial_data.company_name:
+            match = re.search(r'公司名称[：:]\s*([^\n]+)', self.text_content)
             if match:
-                value = match.group(1).strip()
-                if key == "report_year":
-                    financial_data.report_year = int(value)
-                elif key == "company_name":
-                    financial_data.company_name = value
-                elif key == "stock_code":
-                    financial_data.stock_code = value
-                elif key == "auditor":
-                    financial_data.auditor = value
-                elif key == "audit_opinion":
-                    financial_data.audit_opinion = value
+                financial_data.company_name = match.group(1).strip()
+        
+        # 股票代码
+        match = re.search(r'股票代码[：:]\s*([0-9]{6})', self.text_content)
+        if match:
+            financial_data.stock_code = match.group(1)
+        
+        # 报告年度
+        match = re.search(r'(\d{4})\s*年\s*12\s*月\s*\d{1,2}\s*日', self.text_content)
+        if match:
+            financial_data.report_year = int(match.group(1))
+        else:
+            match = re.search(r'(\d{4})年[度]?\s*(?:报告|年报)', self.text_content)
+            if match:
+                financial_data.report_year = int(match.group(1))
+        
+        # 审计意见
+        if '标准无保留意见' in self.text_content:
+            financial_data.audit_opinion = "标准无保留意见"
+        elif '保留意见' in self.text_content:
+            financial_data.audit_opinion = "保留意见"
+        
+        # 会计师事务所
+        match = re.search(r'([\u4e00-\u9fa5]+会计师事务所)', self.text_content)
+        if match:
+            financial_data.auditor = match.group(1)
+    
+    def _parse_number(self, s: str) -> Optional[float]:
+        """解析数字字符串"""
+        if not s or s.strip() == '' or s.strip() == '-':
+            return None
+        s = s.strip().replace(',', '')
+        if s.startswith('(') and s.endswith(')'):
+            s = '-' + s[1:-1]
+        if s.startswith('-'):
+            s = s
+        try:
+            return float(s)
+        except:
+            return None
+    
+    def _find_number_in_text(self, pattern: str, text: str, group: int = 1) -> Optional[float]:
+        """从文本中查找数字"""
+        match = re.search(pattern, text)
+        if match:
+            return self._parse_number(match.group(group))
+        return None
     
     def _parse_financial_statements(self, financial_data: FinancialData):
-        """解析财务报表数据"""
-        # 这里使用真实报告中的数据
-        # 在实际应用中，应该从PDF中解析表格数据
+        """从PDF文本中解析财务报表数据"""
+        text = self.text_content
         
-        # 英洛华2025年真实数据
-        # 如果report_year未从PDF中提取到，默认使用2025
-        current_year = financial_data.report_year if financial_data.report_year > 0 else 2025
-        financial_data.report_year = current_year
+        # 确保report_year有值
+        if financial_data.report_year <= 0:
+            financial_data.report_year = 2025
+        current_year = financial_data.report_year
         
-        # 利润表数据
-        financial_data.current_year.operating_revenue = 3884000000  # 38.84亿元
-        financial_data.current_year.net_profit = 250000000  # 2.50亿元
-        financial_data.current_year.net_profit_attributable = 250000000  # 归母净利润2.50亿元
-        financial_data.current_year.non_recurring_profit = 67000000  # 非经常性损益0.67亿元
-        financial_data.current_year.core_profit = 183000000  # 扣非净利润1.83亿元
+        # 尝试从PDF文本中提取关键财务数据
+        extracted = self._extract_key_figures(text, current_year)
         
-        # 现金流量表数据
-        financial_data.current_year.net_cash_flow_operating = 342000000  # 3.42亿元
-        financial_data.current_year.cash_from_sales = 3423000000  # 34.23亿元
+        if extracted['has_data']:
+            print(f"   从PDF中提取到财务数据")
+            self._fill_financial_data(financial_data, extracted)
+        else:
+            print(f"   未能从PDF中提取完整财务数据，使用样本数据")
+            self._create_sample_data_inplace(financial_data)
+    
+    def _extract_key_figures(self, text: str, current_year: int) -> Dict[str, Any]:
+        """从文本中提取关键财务数据"""
+        result = {
+            'has_data': False,
+            'current': {},
+            'previous': {}
+        }
         
-        # 资产负债表数据
-        financial_data.current_year.total_assets = 10000000000  # 100亿元
-        financial_data.current_year.total_liabilities = 6000000000  # 60亿元
-        financial_data.current_year.total_equity = 4000000000  # 40亿元
-        financial_data.current_year.current_assets = 5000000000  # 50亿元
-        financial_data.current_year.current_liabilities = 3000000000  # 30亿元
-        financial_data.current_year.inventory = 1500000000  # 15亿元
-        financial_data.current_year.accounts_receivable = 1200000000  # 12亿元
-        financial_data.current_year.cash_and_equivalents = 800000000  # 8亿元
+        # 提取营业收入（合并）
+        # 模式1: "营业收入 14,963,644,356.95 13,147,685,135.79"
+        # 模式2: "确认营业收入人民币14,963,644,356.95元"
+        rev_match = re.search(r'确认营业收入人民币([\d,]+\.?\d*)元', text)
+        if rev_match:
+            result['current']['operating_revenue'] = self._parse_number(rev_match.group(1))
         
-        # 计算毛利润和营业利润（估算）
-        financial_data.current_year.gross_profit = financial_data.current_year.operating_revenue * 0.25  # 25%毛利率
-        financial_data.current_year.operating_profit = financial_data.current_year.gross_profit * 0.6  # 60%营业利润率
+        # 从"营业收入和营业成本"附注中提取
+        rev_cost_match = re.search(
+            r'营业收入和营业成本.*?合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*',
+            text, re.DOTALL
+        )
+        if rev_cost_match:
+            if 'operating_revenue' not in result['current']:
+                result['current']['operating_revenue'] = self._parse_number(rev_cost_match.group(1))
+            result['previous']['operating_revenue'] = self._parse_number(rev_cost_match.group(2))
         
-        # 添加历史数据（2024年）
-        if current_year - 1 not in financial_data.historical_data:
-            prev_year = FinancialStatement()
-            prev_year.operating_revenue = 4009000000  # 40.09亿元
-            prev_year.net_profit = 248000000  # 2.48亿元
-            prev_year.net_profit_attributable = 248000000  # 归母净利润2.48亿元
-            prev_year.core_profit = 213000000  # 2.13亿元
-            prev_year.non_recurring_profit = 35000000  # 非经常性损益0.35亿元
-            prev_year.net_cash_flow_operating = 585000000  # 5.85亿元
-            prev_year.cash_from_sales = 3990000000  # 39.90亿元
-            prev_year.total_assets = 9500000000  # 95亿元
-            prev_year.total_liabilities = 5700000000  # 57亿元
-            prev_year.total_equity = 3800000000  # 38亿元
-            prev_year.current_assets = 4700000000  # 47亿元
-            prev_year.current_liabilities = 2900000000  # 29亿元
-            prev_year.inventory = 1235000000  # 12.35亿元（存货增长21.33%反推）
-            prev_year.accounts_receivable = 1066000000  # 10.66亿元（应收增长12.58%反推）
-            prev_year.cash_and_equivalents = 900000000  # 9亿元
-            prev_year.gross_profit = prev_year.operating_revenue * 0.26  # 26%毛利率
-            prev_year.operating_profit = prev_year.gross_profit * 0.55
-            financial_data.historical_data[current_year - 1] = prev_year
+        # 提取归母净利润
+        np_match = re.search(
+            r'归属于母公司所有者的净利润\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)',
+            text
+        )
+        if np_match:
+            result['current']['net_profit_attributable'] = self._parse_number(np_match.group(1))
+            result['current']['net_profit'] = self._parse_number(np_match.group(1))
+            result['previous']['net_profit_attributable'] = self._parse_number(np_match.group(2))
+            result['previous']['net_profit'] = self._parse_number(np_match.group(2))
+        
+        # 提取经营活动现金流
+        ocf_match = re.search(
+            r'经营活动产生的现金流量净额\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)',
+            text
+        )
+        if ocf_match:
+            result['current']['net_cash_flow_operating'] = self._parse_number(ocf_match.group(1))
+            result['previous']['net_cash_flow_operating'] = self._parse_number(ocf_match.group(2))
+        
+        # 提取负债合计
+        debt_match = re.search(
+            r'负债合计\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)\s+[\d,]+\.?\d*',
+            text
+        )
+        if debt_match:
+            result['current']['total_liabilities'] = self._parse_number(debt_match.group(1))
+            result['previous']['total_liabilities'] = self._parse_number(debt_match.group(2))
+        
+        # 提取存货（从审计报告关键审计事项中）
+        inv_match = re.search(r'存货账面余额\s+([\d,]+\.?\d*)\s*元', text)
+        if inv_match:
+            result['current']['inventory'] = self._parse_number(inv_match.group(1))
+        
+        # 提取存货跌价准备
+        inv_prov_match = re.search(r'存货跌价准备及.*?减值准备\s+([\d,]+\.?\d*)\s*元', text)
+        if inv_prov_match and result['current'].get('inventory'):
+            prov = self._parse_number(inv_prov_match.group(1))
+            if prov:
+                result['current']['inventory'] = result['current']['inventory'] - prov
+        
+        # 判断是否提取到足够数据
+        current = result['current']
+        required = ['operating_revenue', 'net_profit']
+        has_current = all(current.get(k) is not None and current.get(k) > 0 for k in required)
+        
+        previous = result['previous']
+        has_previous = any(previous.get(k) is not None and previous.get(k) > 0 for k in ['operating_revenue', 'net_profit'])
+        
+        result['has_data'] = has_current
+        
+        if has_current and not has_previous:
+            print(f"   注意：未提取到上年度数据，趋势分析将不可用")
+        
+        return result
+    
+    def _fill_financial_data(self, financial_data: FinancialData, extracted: Dict):
+        """用提取的数据填充FinancialData"""
+        current = extracted['current']
+        previous = extracted['previous']
+        
+        # 当前年度
+        stmt = financial_data.current_year
+        for key, value in current.items():
+            if value is not None:
+                setattr(stmt, key, value)
+        
+        # 估算缺失的资产负债表数据
+        if stmt.total_assets == 0 and stmt.total_liabilities > 0:
+            # 用负债/资产负债率估算，假设60%资产负债率
+            stmt.total_assets = stmt.total_liabilities / 0.6
+            stmt.total_equity = stmt.total_assets - stmt.total_liabilities
+        
+        if stmt.gross_profit == 0 and stmt.operating_revenue > 0:
+            stmt.gross_profit = stmt.operating_revenue * 0.25
+        
+        # 历史年度
+        if previous:
+            prev_stmt = FinancialStatement()
+            for key, value in previous.items():
+                if value is not None:
+                    setattr(prev_stmt, key, value)
+            if prev_stmt.gross_profit == 0 and prev_stmt.operating_revenue > 0:
+                prev_stmt.gross_profit = prev_stmt.operating_revenue * 0.25
+            financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
+    
+    def _create_sample_data_inplace(self, financial_data: FinancialData):
+        """在原地填充样本数据"""
+        if not financial_data.company_name:
+            financial_data.company_name = "未知公司"
+        
+        stmt = financial_data.current_year
+        stmt.operating_revenue = 1000000000
+        stmt.net_profit = 150000000
+        stmt.net_profit_attributable = 150000000
+        stmt.net_cash_flow_operating = 180000000
+        stmt.total_assets = 2000000000
+        stmt.total_liabilities = 800000000
+        stmt.total_equity = 1200000000
+        stmt.current_assets = 800000000
+        stmt.current_liabilities = 400000000
+        stmt.inventory = 200000000
+        stmt.accounts_receivable = 300000000
+        stmt.gross_profit = 300000000
+        
+        prev_stmt = FinancialStatement()
+        prev_stmt.operating_revenue = 900000000
+        prev_stmt.net_profit = 140000000
+        prev_stmt.net_cash_flow_operating = 170000000
+        financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
     
     def _parse_notes(self, financial_data: FinancialData):
         """解析附注信息"""
-        # 从文本中提取附注信息
         notes_patterns = {
             "related_party_transactions": r"关联交易.*?(\d+\.?\d*%)",
             "accounting_policy_changes": r"会计政策变更",
@@ -202,35 +322,28 @@ class PDFDataExtractor:
         financial_data.auditor = "示例会计师事务所"
         financial_data.audit_opinion = "标准无保留意见"
         
-        # 当前年度数据
         current = FinancialStatement()
-        current.operating_revenue = 1000000000  # 10亿元
-        current.operating_cost = 700000000  # 7亿元
-        current.gross_profit = 300000000  # 3亿元
-        current.operating_expenses = 100000000  # 1亿元
-        current.operating_profit = 200000000  # 2亿元
-        current.net_profit = 150000000  # 1.5亿元
-        current.net_profit_attributable = 150000000  # 归母净利润1.5亿元
-        current.net_cash_flow_operating = 180000000  # 1.8亿元
-        current.total_assets = 2000000000  # 20亿元
-        current.total_liabilities = 800000000  # 8亿元
-        current.total_equity = 1200000000  # 12亿元
-        current.current_assets = 800000000  # 8亿元
-        current.current_liabilities = 400000000  # 4亿元
-        current.inventory = 200000000  # 2亿元
-        current.accounts_receivable = 300000000  # 3亿元
+        current.operating_revenue = 1000000000
+        current.net_profit = 150000000
+        current.net_profit_attributable = 150000000
+        current.net_cash_flow_operating = 180000000
+        current.total_assets = 2000000000
+        current.total_liabilities = 800000000
+        current.total_equity = 1200000000
+        current.current_assets = 800000000
+        current.current_liabilities = 400000000
+        current.inventory = 200000000
+        current.accounts_receivable = 300000000
+        current.gross_profit = 300000000
         
         financial_data.current_year = current
         
-        # 历史数据
         prev_year = FinancialStatement()
-        prev_year.operating_revenue = 900000000  # 9亿元
-        prev_year.net_profit = 140000000  # 1.4亿元
-        prev_year.net_cash_flow_operating = 170000000  # 1.7亿元
-        
+        prev_year.operating_revenue = 900000000
+        prev_year.net_profit = 140000000
+        prev_year.net_cash_flow_operating = 170000000
         financial_data.historical_data[2024] = prev_year
         
-        # 计算比率
         financial_data.current_year.calculate_ratios()
         
         return financial_data

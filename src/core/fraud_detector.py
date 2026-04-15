@@ -448,8 +448,10 @@ class FraudDetector:
         """检测审计问题"""
         indicators = []
         
-        # 检查审计意见
-        if "非标准" in financial_data.audit_opinion or "保留" in financial_data.audit_opinion:
+        # 检查审计意见（排除"标准无保留意见"和"无保留意见"）
+        opinion = financial_data.audit_opinion
+        is_non_standard = ("保留" in opinion and "无保留" not in opinion) or "否定" in opinion or "无法表示" in opinion or "非标准" in opinion
+        if is_non_standard:
             indicator = FraudIndicator(
                 type=FraudType.AUDIT_ISSUE,
                 name="审计意见非标",
