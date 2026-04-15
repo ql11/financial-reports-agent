@@ -183,13 +183,15 @@ class FinancialFraudAnalyzer:
     
     def _detect_anomalies(self, financial_data: FinancialData, 
                           analysis: FinancialAnalysis) -> List[Dict[str, Any]]:
-        """检测异常指标"""
+        """检测异常指标 - 基于专业造假识别文档的红警信号(Red Flags)"""
         anomalies = []
         
         current = financial_data.current_year
         
-        # 检查毛利率异常
-        if current.gross_margin < 10:  # 毛利率低于10%
+        # === 盈利能力异常 ===
+        
+        # 毛利率过低
+        if current.gross_margin < 10:
             anomalies.append({
                 "metric": "毛利率",
                 "value": current.gross_margin,
@@ -198,8 +200,8 @@ class FinancialFraudAnalyzer:
                 "severity": "high"
             })
         
-        # 检查净利率异常
-        if current.net_margin < 3:  # 净利率低于3%
+        # 净利率过低
+        if current.net_margin < 3:
             anomalies.append({
                 "metric": "净利率",
                 "value": current.net_margin,
@@ -208,8 +210,10 @@ class FinancialFraudAnalyzer:
                 "severity": "medium"
             })
         
-        # 检查资产负债率异常
-        if current.debt_ratio > 70:  # 资产负债率高于70%
+        # === 偿债能力异常 ===
+        
+        # 资产负债率过高
+        if current.debt_ratio > 70:
             anomalies.append({
                 "metric": "资产负债率",
                 "value": current.debt_ratio,
@@ -218,8 +222,8 @@ class FinancialFraudAnalyzer:
                 "severity": "high"
             })
         
-        # 检查流动比率异常
-        if current.current_ratio < 1.0:  # 流动比率低于1
+        # 流动比率过低
+        if current.current_ratio < 1.0:
             anomalies.append({
                 "metric": "流动比率",
                 "value": current.current_ratio,
@@ -228,9 +232,61 @@ class FinancialFraudAnalyzer:
                 "severity": "high"
             })
         
-        # 检查收入增长异常
+        # === 收入质量异常（新增） ===
+        
+        # 现金收入比 = 销售商品收到的现金 / 营业收入
+        if current.operating_revenue > 0 and hasattr(current, 'cash_from_sales') and current.cash_from_sales > 0:
+            cash_revenue_ratio = current.cash_from_sales / current.operating_revenue
+            if cash_revenue_ratio < 0.8:
+                anomalies.append({
+                    "metric": "现金收入比",
+                    "value": f"{cash_revenue_ratio:.1%}",
+                    "threshold": "80%",
+                    "description": "现金收入比低于80%，收入质量差，可能存在虚构收入",
+                    "severity": "high"
+                })
+        
+        # 应收账款占收入比
+        if current.operating_revenue > 0 and current.accounts_receivable > 0:
+            receivable_ratio = current.accounts_receivable / current.operating_revenue
+            if receivable_ratio > 0.5:
+                anomalies.append({
+                    "metric": "应收账款占收入比",
+                    "value": f"{receivable_ratio:.1%}",
+                    "threshold": "50%",
+                    "description": "应收账款占收入比过高，可能虚增收入或回款困难",
+                    "severity": "high"
+                })
+        
+        # === 现金流质量异常（新增） ===
+        
+        # 经营现金流/净利润比率
+        if current.net_profit > 0 and current.net_cash_flow_operating > 0:
+            cash_profit_ratio = current.net_cash_flow_operating / current.net_profit
+            if cash_profit_ratio < 0.5:
+                anomalies.append({
+                    "metric": "经营现金流/净利润",
+                    "value": f"{cash_profit_ratio:.2f}",
+                    "threshold": "0.5",
+                    "description": "经营现金流/净利润<0.5，盈利质量极差，典型造假信号",
+                    "severity": "high"
+                })
+        
+        # 净利润为正但经营现金流为负（最严重信号）
+        if current.net_profit > 0 and current.net_cash_flow_operating <= 0:
+            anomalies.append({
+                "metric": "现金流与利润背离",
+                "value": f"净利润{current.net_profit:,.0f} / 经营现金流{current.net_cash_flow_operating:,.0f}",
+                "threshold": "经营现金流>0",
+                "description": "净利润为正但经营现金流为负，收入可能虚构（★★★★★信号）",
+                "severity": "critical"
+            })
+        
+        # === 增长异常 ===
+        
+        # 收入大幅下降
         revenue_growth = analysis.growth_ratios.get("营业收入增长率", 0)
-        if revenue_growth < -20:  # 收入下降超过20%
+        if revenue_growth < -20:
             anomalies.append({
                 "metric": "营业收入增长率",
                 "value": revenue_growth,
@@ -239,9 +295,9 @@ class FinancialFraudAnalyzer:
                 "severity": "high"
             })
         
-        # 检查现金流增长异常
+        # 现金流大幅下降
         cash_flow_growth = analysis.growth_ratios.get("经营活动现金流增长率", 0)
-        if cash_flow_growth < -30:  # 现金流下降超过30%
+        if cash_flow_growth < -30:
             anomalies.append({
                 "metric": "经营活动现金流增长率",
                 "value": cash_flow_growth,
@@ -249,6 +305,48 @@ class FinancialFraudAnalyzer:
                 "description": "经营活动现金流大幅下降，现金流质量可能恶化",
                 "severity": "high"
             })
+        
+        # 应收账款增速 > 收入增速（新增红警信号）
+        receivables_growth = financial_data.get_growth_rate("accounts_receivable", 1)
+        if receivables_growth > revenue_growth + 10 and receivables_growth > 20:
+            anomalies.append({
+                "metric": "应收账款增速vs收入增速",
+                "value": f"应收{receivables_growth:.1f}% vs 收入{revenue_growth:.1f}%",
+                "threshold": "应收增速≤收入增速",
+                "description": "应收账款增速远超收入增速，可能虚构收入",
+                "severity": "high"
+            })
+        
+        # 存货增速 > 收入增速（新增红警信号）
+        inventory_growth = financial_data.get_growth_rate("inventory", 1)
+        if inventory_growth > revenue_growth + 15 and inventory_growth > 20:
+            anomalies.append({
+                "metric": "存货增速vs收入增速",
+                "value": f"存货{inventory_growth:.1f}% vs 收入{revenue_growth:.1f}%",
+                "threshold": "存货增速≤收入增速",
+                "description": "存货增速远超收入增速，可能少结转成本或存货虚增",
+                "severity": "high"
+            })
+        
+        # === 毛利率与存货背离（新增） ===
+        # 毛利率上升 + 存货周转天数上升 = 典型造假特征
+        if current.gross_margin > 0 and current.inventory_turnover > 0:
+            # 毛利率上升但存货周转率下降
+            if len(financial_data.historical_data) > 0:
+                prev_years = sorted(financial_data.historical_data.keys())
+                if prev_years:
+                    prev = financial_data.historical_data[prev_years[-1]]
+                    if prev.gross_margin > 0 and prev.inventory_turnover > 0:
+                        margin_up = current.gross_margin > prev.gross_margin
+                        turnover_down = current.inventory_turnover < prev.inventory_turnover
+                        if margin_up and turnover_down:
+                            anomalies.append({
+                                "metric": "毛利率与存货周转背离",
+                                "value": f"毛利率{current.gross_margin:.1f}%↑ 存货周转{current.inventory_turnover:.2f}↓",
+                                "threshold": "毛利率↑应伴随存货周转↑",
+                                "description": "毛利率上升但存货周转率下降，典型造假特征（少结转成本导致存货虚增、毛利率虚高）",
+                                "severity": "high"
+                            })
         
         return anomalies
     

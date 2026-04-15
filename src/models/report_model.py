@@ -181,6 +181,39 @@ class AnalysisReport:
                 markdown_parts.append(f"- **{name}**: {value:.2f}%")
             markdown_parts.append("")
         
+        # 收入质量分析（新增）
+        if self.detailed_analysis and "revenue_quality" in self.detailed_analysis:
+            rq = self.detailed_analysis["revenue_quality"]
+            if rq:
+                markdown_parts.append("### 收入质量分析")
+                for name, value in rq.items():
+                    if isinstance(value, float):
+                        markdown_parts.append(f"- **{name}**: {value:.2%}" if value < 1 else f"- **{name}**: {value:.1f}")
+                    else:
+                        markdown_parts.append(f"- **{name}**: {value}")
+                markdown_parts.append("")
+        
+        # 现金流质量分析（新增）
+        if self.detailed_analysis and "cash_flow_quality" in self.detailed_analysis:
+            cq = self.detailed_analysis["cash_flow_quality"]
+            if cq:
+                markdown_parts.append("### 现金流质量分析")
+                for name, value in cq.items():
+                    if isinstance(value, float):
+                        markdown_parts.append(f"- **{name}**: {value:.2f}")
+                    else:
+                        markdown_parts.append(f"- **{name}**: {value}")
+                markdown_parts.append("")
+        
+        # 报表勾稽校验（新增）
+        if self.detailed_analysis and "cross_statement_checks" in self.detailed_analysis:
+            cs = self.detailed_analysis["cross_statement_checks"]
+            if cs:
+                markdown_parts.append("### 报表勾稽校验")
+                for name, value in cs.items():
+                    markdown_parts.append(f"- **{name}**: {value}")
+                markdown_parts.append("")
+        
         # 风险评估
         markdown_parts.append("## 风险评估")
         markdown_parts.append(f"**总体风险等级**: {self.risk_assessment.risk_level.value}")

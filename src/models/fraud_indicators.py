@@ -28,6 +28,15 @@ class FraudType(Enum):
     GOVERNMENT_SUBSIDY = "政府补助操纵"
     INVENTORY_MANIPULATION = "存货操纵"
     RECEIVABLES_MANIPULATION = "应收账款操纵"
+    FICTITIOUS_REVENUE = "虚构收入"
+    EXPENSE_CAPITALIZATION = "费用资本化"
+    ASSET_OVERSTATE = "资产高估"
+    LIABILITY_CONCEAL = "负债隐瞒"
+    PROVISION_UNDERSTATE = "准备低估"
+    TABLE_OFF_FINANCING = "表外融资"
+    ACCOUNTING_ESTIMATE_CHANGE = "会计估计变更"
+    AUDITOR_CHANGE = "审计师变更"
+    CROSS_STATEMENT_INCONSISTENCY = "报表勾稽异常"
 
 
 @dataclass
@@ -245,5 +254,188 @@ FRAUD_INDICATORS = {
         description="毛利率或净利率持续下降",
         risk_level=RiskLevel.MEDIUM,
         score=1.5
+    ),
+    
+    # ===== 新增：来自专业造假识别文档的指标 =====
+    
+    # 虚构收入
+    "fictitious_revenue": FraudIndicator(
+        type=FraudType.FICTITIOUS_REVENUE,
+        name="虚构收入嫌疑",
+        description="应收账款增速远超收入增速，现金收入比低，可能虚构销售",
+        risk_level=RiskLevel.HIGH,
+        score=3.0
+    ),
+    
+    "cash_revenue_ratio_low": FraudIndicator(
+        type=FraudType.FICTITIOUS_REVENUE,
+        name="现金收入比过低",
+        description="销售商品收到的现金/营业收入长期低于80%，收入质量差",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "q4_revenue_concentration": FraudIndicator(
+        type=FraudType.FICTITIOUS_REVENUE,
+        name="年末收入集中确认",
+        description="第四季度收入占比异常高，可能年底虚增收入",
+        risk_level=RiskLevel.MEDIUM,
+        score=2.0
+    ),
+    
+    # 费用资本化
+    "expense_capitalization_abnormal": FraudIndicator(
+        type=FraudType.EXPENSE_CAPITALIZATION,
+        name="费用资本化异常",
+        description="研发费用或营销费用资本化比例远高于行业惯例",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "depreciation_policy_change": FraudIndicator(
+        type=FraudType.EXPENSE_CAPITALIZATION,
+        name="折旧政策变更",
+        description="延长折旧年限或变更折旧方法以减少费用",
+        risk_level=RiskLevel.MEDIUM,
+        score=2.0
+    ),
+    
+    # 资产高估
+    "asset_overstate": FraudIndicator(
+        type=FraudType.ASSET_OVERSTATE,
+        name="资产高估嫌疑",
+        description="固定资产/无形资产频繁重估增值，或虚构应收账款和存货",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "construction_delay": FraudIndicator(
+        type=FraudType.ASSET_OVERSTATE,
+        name="在建工程迟迟不转固",
+        description="在建工程长期不转入固定资产，可能持续利息资本化虚增资产",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "capacity_asset_mismatch": FraudIndicator(
+        type=FraudType.ASSET_OVERSTATE,
+        name="产能与资产不匹配",
+        description="产能利用率低但固定资产大幅增长",
+        risk_level=RiskLevel.MEDIUM,
+        score=2.0
+    ),
+    
+    # 负债隐瞒
+    "liability_conceal": FraudIndicator(
+        type=FraudType.LIABILITY_CONCEAL,
+        name="负债隐瞒嫌疑",
+        description="将应计入负债的项目计入权益或表外，低估负债率",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    # 准备低估
+    "provision_understate": FraudIndicator(
+        type=FraudType.PROVISION_UNDERSTATE,
+        name="减值准备计提不足",
+        description="坏账准备、存货跌价准备、资产减值准备计提比例异常偏低",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    # 表外融资
+    "table_off_financing": FraudIndicator(
+        type=FraudType.TABLE_OFF_FINANCING,
+        name="表外融资嫌疑",
+        description="通过SPE/空壳公司将负债转移至表外",
+        risk_level=RiskLevel.HIGH,
+        score=2.0
+    ),
+    
+    # 会计估计变更
+    "accounting_estimate_change": FraudIndicator(
+        type=FraudType.ACCOUNTING_ESTIMATE_CHANGE,
+        name="会计估计变更",
+        description="延长折旧年限、调低坏账计提比例、调低存货跌价准备等",
+        risk_level=RiskLevel.MEDIUM,
+        score=2.0
+    ),
+    
+    # 审计师变更
+    "auditor_change": FraudIndicator(
+        type=FraudType.AUDITOR_CHANGE,
+        name="审计师变更",
+        description="无合理理由更换审计师，可能暗示内部冲突或掩盖",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    # 报表勾稽异常
+    "cross_statement_inconsistency": FraudIndicator(
+        type=FraudType.CROSS_STATEMENT_INCONSISTENCY,
+        name="报表勾稽关系异常",
+        description="三张报表之间勾稽关系不匹配，可能存在数据操纵",
+        risk_level=RiskLevel.HIGH,
+        score=3.0
+    ),
+    
+    # 现金流比率异常
+    "cash_flow_to_profit_low": FraudIndicator(
+        type=FraudType.CASH_FLOW_MANIPULATION,
+        name="经营现金流/净利润比率过低",
+        description="经营现金流/净利润持续低于0.5，盈利质量极差",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "free_cash_flow_negative": FraudIndicator(
+        type=FraudType.CASH_FLOW_MANIPULATION,
+        name="自由现金流持续为负",
+        description="自由现金流(经营现金流-资本支出)持续为负但净利润为正",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    # 毛利率异常
+    "gross_margin_abnormal_high": FraudIndicator(
+        type=FraudType.REVENUE_MANIPULATION,
+        name="毛利率异常偏高",
+        description="毛利率显著高于行业龙头或与同业差异>15%",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "gross_margin_too_smooth": FraudIndicator(
+        type=FraudType.REVENUE_MANIPULATION,
+        name="毛利率异常平滑",
+        description="毛利率波动异常平滑，可能人为调节",
+        risk_level=RiskLevel.MEDIUM,
+        score=1.5
+    ),
+    
+    # 关联交易深化
+    "related_party_conceal": FraudIndicator(
+        type=FraudType.RELATED_PARTY_TRANSACTION,
+        name="关联交易披露不完整",
+        description="关联交易披露不完整或隐性关联方未识别",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    "related_party_pricing_abnormal": FraudIndicator(
+        type=FraudType.RELATED_PARTY_TRANSACTION,
+        name="关联交易定价异常",
+        description="关联交易定价显著偏离市场价",
+        risk_level=RiskLevel.HIGH,
+        score=2.5
+    ),
+    
+    # 或有事项
+    "contingent_liability_conceal": FraudIndicator(
+        type=FraudType.LIABILITY_CONCEAL,
+        name="或有事项披露不足",
+        description="未决诉讼、对外担保等或有事项披露不充分",
+        risk_level=RiskLevel.MEDIUM,
+        score=2.0
     )
 }

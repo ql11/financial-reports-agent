@@ -121,6 +121,41 @@ class ReportGenerator:
                                    financial_analysis: FinancialAnalysis,
                                    fraud_patterns: List[FraudPattern]) -> Dict[str, Any]:
         """生成详细分析"""
+        current = financial_data.current_year
+        
+        # 收入质量分析（新增）
+        revenue_quality = {}
+        if current.operating_revenue > 0:
+            if hasattr(current, 'cash_from_sales') and current.cash_from_sales > 0:
+                revenue_quality["现金收入比"] = round(current.cash_from_sales / current.operating_revenue, 4)
+            if current.accounts_receivable > 0:
+                revenue_quality["应收账款占收入比"] = round(current.accounts_receivable / current.operating_revenue, 4)
+            if current.accounts_receivable > 0:
+                revenue_quality["应收账款周转天数"] = round(365 * current.accounts_receivable / current.operating_revenue, 1)
+        
+        # 现金流质量分析（新增）
+        cash_flow_quality = {}
+        if current.net_profit > 0:
+            cash_flow_quality["经营现金流/净利润"] = round(current.net_cash_flow_operating / current.net_profit, 4) if current.net_profit != 0 else None
+        if current.net_cash_flow_operating > 0 and current.net_profit > 0:
+            ratio = current.net_cash_flow_operating / current.net_profit
+            if ratio >= 1:
+                cash_flow_quality["盈利质量评价"] = "好（经营现金流≥净利润）"
+            elif ratio >= 0.5:
+                cash_flow_quality["盈利质量评价"] = "一般（经营现金流<净利润）"
+            else:
+                cash_flow_quality["盈利质量评价"] = "差（经营现金流远低于净利润）"
+        elif current.net_profit > 0 and current.net_cash_flow_operating <= 0:
+            cash_flow_quality["盈利质量评价"] = "极差（净利润为正但经营现金流为负，典型造假信号）"
+        
+        # 报表勾稽校验结果（新增）
+        cross_statement_checks = {}
+        if current.total_assets > 0 and current.total_liabilities > 0:
+            implied_equity = current.total_assets - current.total_liabilities
+            if hasattr(current, 'total_equity') and current.total_equity > 0:
+                equity_diff = abs(implied_equity - current.total_equity)
+                cross_statement_checks["资产-负债=权益校验"] = "通过" if equity_diff / current.total_assets < 0.05 else f"异常（差异{equity_diff:,.0f}）"
+        
         detailed_analysis = {
             "company_overview": {
                 "name": financial_data.company_name,
@@ -135,6 +170,9 @@ class ReportGenerator:
                 "operation": financial_analysis.operation_ratios,
                 "growth": financial_analysis.growth_ratios
             },
+            "revenue_quality": revenue_quality,
+            "cash_flow_quality": cash_flow_quality,
+            "cross_statement_checks": cross_statement_checks,
             "trend_analysis": financial_analysis.trends,
             "industry_comparison": financial_analysis.industry_comparisons,
             "fraud_patterns": [pattern.to_dict() for pattern in fraud_patterns],
