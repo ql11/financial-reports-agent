@@ -1,0 +1,34 @@
+# 财报造假分析系统依赖库
+
+# 核心依赖
+python>=3.8
+
+# 数据处理和分析
+pandas>=1.5.0
+numpy>=1.21.0
+
+# PDF处理（可选，用于实际PDF解析）
+# pdfplumber>=0.10.3
+# camelot-py>=0.11.0
+
+# 报告生成
+# 内置支持，无需额外依赖
+
+# 开发工具（可选）
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=5.0.0
+
+# 使用说明：
+# 1. 基础运行：只需要Python 3.8+，pandas和numpy
+# 2. PDF解析：如果需要实际解析PDF文件，安装pdfplumber和camelot-py
+# 3. 开发工具：如果需要运行测试或格式化代码，安装开发工具
+
+# 安装命令：
+# pip install -r requirements.txt
+
+# 如果需要PDF解析功能：
+# pip install pdfplumber camelot-py
+
+# 如果需要开发工具：
+# pip install pytest black flake8

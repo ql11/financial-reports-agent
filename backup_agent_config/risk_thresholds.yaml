@@ -1,0 +1,155 @@
+# 风险阈值配置文件
+
+# 偿债能力风险阈值
+solvency:
+  # 资产负债率
+  debt_ratio:
+    high: 0.7           # 高风险阈值（>70%）
+    medium: 0.6         # 中风险阈值（>60%）
+    low: 0.5            # 低风险阈值（>50%）
+    description: "资产负债率过高，企业负债压力大，财务风险较高"
+  
+  # 流动比率
+  current_ratio:
+    high: 0.8           # 高风险阈值（<0.8）
+    medium: 1.0         # 中风险阈值（<1.0）
+    low: 1.5            # 低风险阈值（<1.5）
+    description: "流动比率过低，短期偿债能力不足"
+  
+  # 速动比率
+  quick_ratio:
+    high: 0.4           # 高风险阈值（<0.4）
+    medium: 0.5         # 中风险阈值（<0.5）
+    low: 1.0            # 低风险阈值（<1.0）
+    description: "速动比率过低，快速偿债能力不足"
+  
+  # 产权比率
+  equity_ratio:
+    high: 2.0           # 高风险阈值（>2.0）
+    medium: 1.5         # 中风险阈值（>1.5）
+    low: 1.0            # 低风险阈值（>1.0）
+    description: "产权比率过高，财务杠杆风险大"
+
+# 盈利能力风险阈值
+profitability:
+  # 毛利率
+  gross_margin:
+    high: 0.1           # 高风险阈值（<10%）
+    medium: 0.2         # 中风险阈值（<20%）
+    low: 0.3            # 低风险阈值（<30%）
+    description: "毛利率过低，产品竞争力不足"
+  
+  # 净利率
+  net_margin:
+    high: 0.02          # 高风险阈值（<2%）
+    medium: 0.05        # 中风险阈值（<5%）
+    low: 0.1            # 低风险阈值（<10%）
+    description: "净利率过低，盈利能力弱"
+  
+  # 净资产收益率（ROE）
+  roe:
+    high: 0.05          # 高风险阈值（<5%）
+    medium: 0.1         # 中风险阈值（<10%）
+    low: 0.15           # 低风险阈值（<15%）
+    description: "ROE过低，股东权益回报率低"
+  
+  # 总资产收益率（ROA）
+  roa:
+    high: 0.03          # 高风险阈值（<3%）
+    medium: 0.05        # 中风险阈值（<5%）
+    low: 0.08           # 低风险阈值（<8%）
+    description: "ROA过低，资产利用效率低"
+
+# 运营能力风险阈值
+operation:
+  # 存货周转率
+  inventory_turnover:
+    high: 2.0           # 高风险阈值（<2次）
+    medium: 3.0         # 中风险阈值（<3次）
+    low: 5.0            # 低风险阈值（<5次）
+    description: "存货周转率过低，存货积压风险"
+  
+  # 应收账款周转率
+  receivable_turnover:
+    high: 3.0           # 高风险阈值（<3次）
+    medium: 5.0         # 中风险阈值（<5次）
+    low: 8.0            # 低风险阈值（<8次）
+    description: "应收账款周转率过低，回款风险"
+  
+  # 总资产周转率
+  total_asset_turnover:
+    high: 0.3           # 高风险阈值（<0.3次）
+    medium: 0.5         # 中风险阈值（<0.5次）
+    low: 0.8            # 低风险阈值（<0.8次）
+    description: "总资产周转率过低，资产运营效率低"
+
+# 成长能力风险阈值
+growth:
+  # 营业收入增长率
+  revenue_growth:
+    high: -0.2          # 高风险阈值（<-20%）
+    medium: -0.1        # 中风险阈值（<-10%）
+    low: 0.0            # 低风险阈值（<0%）
+    description: "营收负增长，业务萎缩风险"
+  
+  # 净利润增长率
+  profit_growth:
+    high: -0.3          # 高风险阈值（<-30%）
+    medium: -0.1        # 中风险阈值（<-10%）
+    low: 0.0            # 低风险阈值（<0%）
+    description: "净利润负增长，盈利能力下降"
+  
+  # 总资产增长率
+  asset_growth:
+    high: -0.1          # 高风险阈值（<-10%）
+    medium: 0.0         # 中风险阈值（<0%）
+    low: 0.05           # 低风险阈值（<5%）
+    description: "资产负增长，企业规模萎缩"
+
+# 现金流风险阈值
+cashflow:
+  # 自由现金流
+  free_cash_flow:
+    high: -100000000    # 高风险阈值（<-1亿）
+    medium: 0           # 中风险阈值（<0）
+    low: 10000000       # 低风险阈值（<1000万）
+    description: "自由现金流为负，资金链紧张"
+  
+  # 经营现金流/净利润
+  operating_cash_to_profit:
+    high: 0.5           # 高风险阈值（<0.5）
+    medium: 0.8         # 中风险阈值（<0.8）
+    low: 1.0            # 低风险阈值（<1.0）
+    description: "经营现金流质量低，利润含金量不足"
+  
+  # 现金债务覆盖率
+  cash_to_debt:
+    high: 0.1           # 高风险阈值（<0.1）
+    medium: 0.2         # 中风险阈值（<0.2）
+    low: 0.3            # 低风险阈值（<0.3）
+    description: "现金债务覆盖率低，偿债压力大"
+
+# 综合评分权重
+scoring_weights:
+  profitability: 0.25   # 盈利能力权重
+  solvency: 0.25        # 偿债能力权重
+  operation: 0.20       # 运营能力权重
+  growth: 0.15          # 成长能力权重
+  cashflow: 0.15        # 现金流权重
+
+# 风险等级定义
+risk_levels:
+  high:
+    score_deduction: 3  # 高风险扣分
+    color: "red"        # 显示颜色
+    priority: 1         # 优先级
+  
+  medium:
+    score_deduction: 2  # 中风险扣分
+    color: "orange"     # 显示颜色
+    priority: 2         # 优先级
+  
+  low:
+    score_deduction: 1  # 低风险扣分
+    color: "yellow"     # 显示颜色
+    priority: 3         # 优先级

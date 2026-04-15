@@ -45,7 +45,8 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "financial-agent=run_agent:main",
+            "fraud-analyzer=scripts.analyze_fraud:main",
+            "batch-fraud-analyzer=scripts.batch_analyze:main",
         ],
     },
     include_package_data=True,

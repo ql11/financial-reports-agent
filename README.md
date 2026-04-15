@@ -61,22 +61,42 @@
 
 ## 🏗️ 系统架构
 
-### 核心分析模块
+### 模块化设计
 ```
 Financial_Reports/
-├── enhanced_fraud_analysis.py     # 增强版财报造假分析主程序
-├── analyze_fraud.py               # 基础版财报造假分析程序
-├── advanced_fraud_analysis.py     # 高级财报造假分析程序
-├── source/                        # 财报PDF文件目录
-│   └── 英洛华_2025_年报.pdf      # 示例财报文件
-├── reports/                       # 分析报告输出目录
-│   ├── 英洛华科技股份有限公司_2025_财报造假分析_20260415_123406.md
-│   ├── 英洛华科技股份有限公司_2025_高级财报造假分析_20260415_124434.md
-│   └── 英洛华科技股份有限公司_2025_增强版财报造假分析_20260415_135546.md
-├── docs/                          # 文档目录
-├── tests/                         # 测试目录
-└── requirements_agent.txt         # 依赖包列表
+├── src/                          # 源代码目录
+│   ├── core/                     # 核心分析模块
+│   │   ├── analyzer.py           # 主分析器 - 协调整个分析流程
+│   │   ├── data_extractor.py     # 数据提取器 - 从PDF提取财务数据
+│   │   ├── fraud_detector.py     # 造假检测器 - 检测财报造假迹象
+│   │   ├── risk_assessor.py      # 风险评估器 - 评估财务风险
+│   │   └── report_generator.py   # 报告生成器 - 生成分析报告
+│   ├── models/                   # 数据模型
+│   │   ├── financial_data.py     # 财务数据模型
+│   │   ├── fraud_indicators.py   # 造假指标模型
+│   │   └── report_model.py       # 报告模型
+│   └── utils/                    # 工具函数
+│       ├── file_utils.py         # 文件工具
+│       ├── calculation_utils.py  # 计算工具
+│       └── validation_utils.py   # 验证工具
+├── configs/                      # 配置文件
+│   ├── thresholds.yaml           # 阈值配置
+│   └── weights.yaml              # 权重配置
+├── scripts/                      # 命令行脚本
+│   ├── analyze_fraud.py          # 单文件分析脚本
+│   └── batch_analyze.py          # 批量分析脚本
+├── examples/                     # 使用示例
+├── tests/                        # 单元测试
+└── main.py                       # 统一入口点
 ```
+
+### 核心分析流程
+1. **数据提取**：从PDF财报中提取关键财务数据
+2. **指标计算**：计算核心财务指标和异常指标
+3. **异常检测**：检测财报造假和财务异常
+4. **风险评估**：评估造假风险和财务风险
+5. **报告生成**：生成详细的分析报告
+6. **投资建议**：提供基于风险的投资建议
 
 ### 分析流程
 1. **数据提取**：从PDF财报中提取关键财务数据
@@ -91,22 +111,66 @@ Financial_Reports/
 ### 1. 环境准备
 ```bash
 # 安装依赖
-pip install -r requirements_agent.txt
+pip install -r requirements.txt
 
 # 如果需要PDF解析功能，安装额外依赖
 pip install pdfplumber
 ```
 
-### 2. 运行分析
+### 2. 使用命令行工具
 ```bash
-# 运行基础版分析
-python analyze_fraud.py
+# 分析单个财报文件
+python main.py analyze path/to/report.pdf
 
-# 运行高级版分析
-python advanced_fraud_analysis.py
+# 指定公司名称和报告年度
+python main.py analyze path/to/report.pdf --company "英洛华科技" --year 2025
 
-# 运行增强版分析（推荐）
-python enhanced_fraud_analysis.py
+# 批量分析多个财报文件
+python main.py batch path/to/reports/*.pdf
+
+# 指定输出目录和格式
+python main.py analyze path/to/report.pdf --output custom_reports/ --format json
+
+# 显示详细输出
+python main.py analyze path/to/report.pdf --verbose
+```
+
+### 3. 使用Python API
+```python
+from src.core.analyzer import FinancialFraudAnalyzer
+
+# 创建分析器
+analyzer = FinancialFraudAnalyzer(output_dir="reports")
+
+# 分析财报
+report = analyzer.analyze(
+    pdf_path="path/to/report.pdf",
+    company_name="英洛华科技",
+    report_year=2025
+)
+
+# 查看分析结果
+print(f"风险等级: {report.risk_assessment.risk_level.value}")
+print(f"风险评分: {report.risk_assessment.total_score:.1f}/50")
+print(f"投资建议: {report.investment_recommendation}")
+```
+
+### 4. 批量分析
+```python
+from src.core.analyzer import FinancialFraudAnalyzer
+
+# 创建分析器
+analyzer = FinancialFraudAnalyzer(output_dir="batch_reports")
+
+# 批量分析
+pdf_files = [
+    "path/to/report1.pdf",
+    "path/to/report2.pdf",
+    "path/to/report3.pdf"
+]
+
+reports = analyzer.batch_analyze(pdf_files, "batch_reports")
+print(f"成功分析 {len(reports)} 个文件")
 ```
 
 ### 3. 自定义分析
