@@ -12,7 +12,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.analyzer import FinancialFraudAnalyzer
-from src.utils.file_utils import validate_pdf_file
+from src.utils.validation_utils import validate_pdf_file
 
 
 def main():
@@ -50,7 +50,7 @@ def main():
     parser.add_argument(
         "--output", "-o",
         help="报告输出目录（默认: reports）",
-        default="reports"
+        default="outputs"
     )
     
     parser.add_argument(

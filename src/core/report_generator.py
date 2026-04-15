@@ -14,7 +14,7 @@ from ..models.fraud_indicators import FraudPattern
 class ReportGenerator:
     """报告生成器"""
     
-    def __init__(self, output_dir: str = "reports"):
+    def __init__(self, output_dir: str = "outputs"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
     

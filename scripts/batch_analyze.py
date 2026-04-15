@@ -14,7 +14,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.core.analyzer import FinancialFraudAnalyzer
-from src.utils.file_utils import list_files, validate_pdf_file
+from src.utils.file_utils import list_files
+from src.utils.validation_utils import validate_pdf_file
 
 
 def main():
@@ -24,9 +25,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s reports/*.pdf
-  %(prog)s reports/ --output batch_results/
-  %(prog)s reports/ --format json --verbose
+  %(prog)s inputs/*.pdf
+  %(prog)s inputs/ --output batch_results/
+  %(prog)s inputs/ --format json --verbose
         """
     )
     
@@ -37,8 +38,8 @@ def main():
     
     parser.add_argument(
         "--output", "-o",
-        help="报告输出目录（默认: reports）",
-        default="reports"
+        help="报告输出目录（默认: outputs）",
+        default="outputs"
     )
     
     parser.add_argument(

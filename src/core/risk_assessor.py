@@ -64,32 +64,35 @@ class RiskAssessor:
     
     def _apply_weights(self, base_score: float, fraud_patterns: List[FraudPattern]) -> float:
         """应用权重调整"""
-        weighted_score = base_score
-        
-        # 根据模式类型调整权重
+        weighted_score = 0.0
+
+        # 对每个模式的分数分别乘以对应权重，然后求和
         for pattern in fraud_patterns:
+            pattern_score = pattern.total_score
             pattern_name = pattern.name
             if "业绩背离" in pattern_name:
-                weighted_score *= self.risk_weights["revenue_profit_divergence"]
+                weighted_score += pattern_score * self.risk_weights["revenue_profit_divergence"]
             elif "现金流" in pattern_name:
-                weighted_score *= self.risk_weights["cash_flow_divergence"]
+                weighted_score += pattern_score * self.risk_weights["cash_flow_divergence"]
             elif "应收账款" in pattern_name:
-                weighted_score *= self.risk_weights["receivables_anomalies"]
+                weighted_score += pattern_score * self.risk_weights["receivables_anomalies"]
             elif "存货" in pattern_name:
-                weighted_score *= self.risk_weights["inventory_anomalies"]
+                weighted_score += pattern_score * self.risk_weights["inventory_anomalies"]
             elif "政府补助" in pattern_name:
-                weighted_score *= self.risk_weights["subsidy_manipulation"]
+                weighted_score += pattern_score * self.risk_weights["subsidy_manipulation"]
             elif "产能" in pattern_name:
-                weighted_score *= self.risk_weights["capacity_anomalies"]
+                weighted_score += pattern_score * self.risk_weights["capacity_anomalies"]
             elif "关联交易" in pattern_name:
-                weighted_score *= self.risk_weights["related_party_issues"]
+                weighted_score += pattern_score * self.risk_weights["related_party_issues"]
             elif "会计政策" in pattern_name:
-                weighted_score *= self.risk_weights["accounting_changes"]
+                weighted_score += pattern_score * self.risk_weights["accounting_changes"]
             elif "审计" in pattern_name:
-                weighted_score *= self.risk_weights["audit_issues"]
+                weighted_score += pattern_score * self.risk_weights["audit_issues"]
             elif "历史违规" in pattern_name:
-                weighted_score *= self.risk_weights["historical_violations"]
-        
+                weighted_score += pattern_score * self.risk_weights["historical_violations"]
+            else:
+                weighted_score += pattern_score
+
         return min(weighted_score, 50.0)  # 最高50分
     
     def _determine_risk_level(self, score: float) -> RiskLevel:

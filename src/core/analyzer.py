@@ -19,7 +19,7 @@ from .report_generator import ReportGenerator
 class FinancialFraudAnalyzer:
     """财报造假分析器"""
     
-    def __init__(self, output_dir: str = "reports"):
+    def __init__(self, output_dir: str = "outputs"):
         self.data_extractor = PDFDataExtractor()
         self.fraud_detector = FraudDetector()
         self.risk_assessor = RiskAssessor()
@@ -65,6 +65,7 @@ class FinancialFraudAnalyzer:
         fraud_patterns = self.fraud_detector.detect_fraud_patterns(financial_data)
         print(f"   检测到 {len(fraud_patterns)} 个造假模式")
         for pattern in fraud_patterns:
+            pattern.calculate_score()
             print(f"   - {pattern.name}: {pattern.risk_level.value}风险")
         print()
         

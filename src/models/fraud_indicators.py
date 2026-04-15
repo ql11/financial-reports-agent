@@ -72,15 +72,18 @@ class FraudPattern:
         
         self.total_score = sum(indicator.score for indicator in self.indicators)
         
-        # 根据总分确定风险等级
-        if self.total_score >= 8:
-            self.risk_level = RiskLevel.CRITICAL
-        elif self.total_score >= 6:
-            self.risk_level = RiskLevel.HIGH
-        elif self.total_score >= 4:
-            self.risk_level = RiskLevel.MEDIUM
-        else:
-            self.risk_level = RiskLevel.LOW
+        # 根据指标的最高风险等级确定模式风险等级
+        max_risk = RiskLevel.LOW
+        for indicator in self.indicators:
+            if indicator.risk_level == RiskLevel.CRITICAL:
+                max_risk = RiskLevel.CRITICAL
+                break
+            elif indicator.risk_level == RiskLevel.HIGH and max_risk != RiskLevel.CRITICAL:
+                max_risk = RiskLevel.HIGH
+            elif indicator.risk_level == RiskLevel.MEDIUM and max_risk not in [RiskLevel.HIGH, RiskLevel.CRITICAL]:
+                max_risk = RiskLevel.MEDIUM
+        
+        self.risk_level = max_risk
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

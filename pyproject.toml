@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "financial-reports-agent"
 version = "2.0.0"
-description = "基于Agent架构的财报分析系统"
+description = "财报造假分析系统"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -24,29 +24,11 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "langchain>=0.1.0",
-    "openai>=1.0.0",
-    "anthropic>=0.7.0",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
-    "scipy>=1.10.0",
-    "scikit-learn>=1.3.0",
     "pdfplumber>=0.10.3",
-    "camelot-py>=0.11.0",
-    "PyMuPDF>=1.23.0",
-    "pdfminer.six>=20221105",
-    "matplotlib>=3.7.0",
-    "plotly>=5.15.0",
-    "seaborn>=0.12.0",
-    "jinja2>=3.1.0",
-    "markdown>=3.4.0",
-    "weasyprint>=58.0",
     "pyyaml>=6.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
     "click>=8.1.0",
-    "rich>=13.0.0",
-    "tqdm>=4.65.0",
     "loguru>=0.7.0",
 ]
 
@@ -54,20 +36,14 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
-    "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "mypy>=1.5.0",
-    "pre-commit>=3.4.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/yourusername/financial-reports-agent"
-Repository = "https://github.com/yourusername/financial-reports-agent"
-Issues = "https://github.com/yourusername/financial-reports-agent/issues"
-
 [project.scripts]
-financial-agent = "run_agent:main"
+fraud-analyzer = "scripts.analyze_fraud:main"
+batch-fraud-analyzer = "scripts.batch_analyze:main"
 
 [tool.black]
 line-length = 88
