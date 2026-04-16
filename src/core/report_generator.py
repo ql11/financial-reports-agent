@@ -51,8 +51,21 @@ class ReportGenerator:
         # 生成关键发现
         report.key_findings = self._extract_key_findings(fraud_patterns, financial_analysis)
         
-        # 生成投资建议
-        report.investment_recommendation = self._generate_investment_recommendation(risk_assessment)
+        review_override = self._build_review_override(financial_data, risk_assessment)
+        if review_override:
+            review_note = "待核验：证据链未闭合或审计意见存在重大不确定性，暂不采用自动投资建议。"
+            retained_recommendations = self._strip_summary_recommendations(
+                risk_assessment.recommendations
+            )
+            risk_assessment.recommendations = [
+                review_note,
+                *retained_recommendations,
+            ][:10]
+            report.investment_recommendation = review_override
+        else:
+            report.investment_recommendation = self._generate_investment_recommendation(
+                risk_assessment, financial_data
+            )
         
         # 生成详细分析
         report.detailed_analysis = self._generate_detailed_analysis(
@@ -89,7 +102,84 @@ class ReportGenerator:
         # 限制最多10个关键发现
         return key_findings[:10]
     
-    def _generate_investment_recommendation(self, risk_assessment: RiskAssessment) -> str:
+    def _has_key_statement_evidence(self, financial_data: FinancialData) -> bool:
+        required_fields = (
+            "operating_revenue",
+            "net_profit",
+            "net_cash_flow_operating",
+            "total_assets",
+            "total_liabilities",
+        )
+        has_required_fields = all(
+            financial_data.evidence_refs.get(f"statement:{field}")
+            for field in required_fields
+        )
+        has_equity_evidence = bool(
+            financial_data.evidence_refs.get("statement:total_equity")
+        ) or (
+            financial_data.evidence_refs.get("statement:total_assets")
+            and financial_data.evidence_refs.get("statement:total_liabilities")
+        )
+        return has_required_fields and has_equity_evidence
+
+    def _build_review_override(
+        self, financial_data: FinancialData, risk_assessment: RiskAssessment
+    ) -> Optional[str]:
+        """在证据链不完整时覆盖默认投资建议。"""
+        if (
+            "持续经营" in financial_data.audit_opinion
+            or "重大不确定性" in financial_data.audit_opinion
+        ):
+            return (
+                f"**待核验**。审计意见为“{financial_data.audit_opinion}”，"
+                "存在持续经营重大不确定性相关事项，不能直接按低风险处理。"
+                "建议：1) 人工复核审计报告原文；2) 核验持续经营风险来源；3) 暂不采用自动投资建议。"
+            )
+
+        if (
+            risk_assessment.risk_level.value == "低"
+            and not self._has_key_statement_evidence(financial_data)
+        ):
+            return (
+                f"**待核验**。当前自动评分为{risk_assessment.total_score:.1f}/50，"
+                "但主表关键字段证据链不完整，不能直接给出低风险增持结论。"
+                "建议：1) 先补齐营业收入、净利润、现金流和资产负债表页码证据；"
+                "2) 完成人工抽样复核；3) 复核后再使用自动投资建议。"
+            )
+
+        return None
+
+    @staticmethod
+    def _strip_summary_recommendations(recommendations: List[str]) -> List[str]:
+        """去掉风险评估器自动生成的摘要建议，只保留具体复核动作。"""
+        summary_prefixes = (
+            "**极高风险**：",
+            "**高风险**：",
+            "**中等风险**：",
+            "**低风险**：",
+        )
+        summary_lines = {
+            "重点关注现金流异常和审计问题",
+            "关注业绩背离和应收账款异常",
+            "关注存货异常和政府补助操纵",
+            "关注财务指标变化趋势",
+        }
+
+        filtered: List[str] = []
+        seen = set()
+        for recommendation in recommendations:
+            if recommendation.startswith(summary_prefixes):
+                continue
+            if recommendation in summary_lines:
+                continue
+            if recommendation not in seen:
+                filtered.append(recommendation)
+                seen.add(recommendation)
+        return filtered
+
+    def _generate_investment_recommendation(
+        self, risk_assessment: RiskAssessment, financial_data: FinancialData
+    ) -> str:
         """生成投资建议"""
         risk_level = risk_assessment.risk_level.value
         total_score = risk_assessment.total_score
@@ -179,7 +269,8 @@ class ReportGenerator:
             "industry_comparison": financial_analysis.industry_comparisons,
             "fraud_patterns": [pattern.to_dict() for pattern in fraud_patterns],
             "anomalies": financial_analysis.anomalies,
-            "notes": financial_data.notes
+            "notes": financial_data.notes,
+            "evidence_refs": financial_data.evidence_refs,
         }
         
         return detailed_analysis
