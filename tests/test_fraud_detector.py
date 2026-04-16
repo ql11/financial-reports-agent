@@ -434,3 +434,124 @@ def test_fraud_detector_flags_going_concern_unqualified_opinion_with_page_eviden
     assert audit_pattern.indicators[0].evidence == [
         "原文摘录（第12页）: 我们出具了带与持续经营相关的重大不确定性段落的无保留意见。"
     ]
+
+
+def test_fraud_detector_prefers_page_evidence_for_governance_note_patterns():
+    detector = FraudDetector()
+    current = FinancialStatement(
+        operating_revenue=100.0,
+        total_assets=100.0,
+        net_profit=10.0,
+    )
+    data = build_financial_data(
+        current=current,
+        notes={
+            "accounting_policy_changes": "收入确认方法由时点法变更为时段法。",
+            "historical_violations": "收到监管警示函",
+            "auditor_change": "更换会计师事务所",
+            "audit_fee_abnormal": True,
+        },
+    )
+    data.evidence_refs["note:accounting_policy_changes"] = [
+        {"page": 8, "excerpt": "重要会计政策变更 收入确认方法由时点法变更为时段法。"}
+    ]
+    data.evidence_refs["note:historical_violations"] = [
+        {"page": 52, "excerpt": "公司曾收到监管警示函并被要求整改。"}
+    ]
+    data.evidence_refs["note:auditor_change"] = [
+        {"page": 61, "excerpt": "公司本期更换会计师事务所。"}
+    ]
+    data.evidence_refs["note:audit_fee_abnormal"] = [
+        {"page": 62, "excerpt": "本期审计费用较上期明显下降。"}
+    ]
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    accounting_indicator = pattern_map["会计政策变更模式"].indicators[0]
+    history_indicator = pattern_map["历史违规模式"].indicators[0]
+    auditor_indicators = {
+        indicator.name: indicator
+        for indicator in pattern_map["审计师变更模式"].indicators
+    }
+
+    assert "原文摘录（第8页）: 重要会计政策变更 收入确认方法由时点法变更为时段法。" in accounting_indicator.evidence
+    assert "原文摘录（第52页）: 公司曾收到监管警示函并被要求整改。" in history_indicator.evidence
+    assert "原文摘录（第61页）: 公司本期更换会计师事务所。" in auditor_indicators["审计师变更"].evidence
+    assert "原文摘录（第62页）: 本期审计费用较上期明显下降。" in auditor_indicators["审计费用异常波动"].evidence
+
+
+def test_fraud_detector_prefers_page_evidence_for_note_based_risk_patterns():
+    detector = FraudDetector()
+    current = FinancialStatement(
+        operating_revenue=100.0,
+        total_assets=100.0,
+        net_profit=100.0,
+        net_cash_flow_operating=40.0,
+        net_cash_flow_investing=-50.0,
+    )
+    data = build_financial_data(
+        current=current,
+        notes={
+            "rd_capitalization_ratio": "0.6",
+            "depreciation_policy_change": True,
+            "contingent_liabilities": "存在大额未决诉讼",
+            "off_balance_sheet_items": True,
+            "cross_statement_check_failed": "现金变动与现金流量表不一致",
+            "cash_balance_high_interest_low": True,
+            "accounting_estimate_changes": "延长固定资产折旧年限",
+            "bad_debt_ratio_decreased": True,
+        },
+    )
+    data.evidence_refs["note:rd_capitalization_ratio"] = [
+        {"page": 18, "excerpt": "本期研发支出资本化比例为60.00%。"}
+    ]
+    data.evidence_refs["note:depreciation_policy_change"] = [
+        {"page": 19, "excerpt": "固定资产折旧年限由5年延长至8年。"}
+    ]
+    data.evidence_refs["note:contingent_liabilities"] = [
+        {"page": 44, "excerpt": "公司存在大额未决诉讼，涉案金额重大。"}
+    ]
+    data.evidence_refs["note:off_balance_sheet_items"] = [
+        {"page": 45, "excerpt": "公司通过结构化安排形成表外融资。"}
+    ]
+    data.evidence_refs["note:cross_statement_check_failed"] = [
+        {"page": 31, "excerpt": "现金变动与现金流量表披露金额不一致。"}
+    ]
+    data.evidence_refs["note:cash_balance_high_interest_low"] = [
+        {"page": 28, "excerpt": "货币资金余额较高但利息收入明显偏低。"}
+    ]
+    data.evidence_refs["note:accounting_estimate_changes"] = [
+        {"page": 21, "excerpt": "重要会计估计变更：延长固定资产折旧年限。"}
+    ]
+    data.evidence_refs["note:bad_debt_ratio_decreased"] = [
+        {"page": 24, "excerpt": "坏账准备计提比例较上期下降。"}
+    ]
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    expense_indicators = {
+        indicator.name: indicator for indicator in pattern_map["费用资本化模式"].indicators
+    }
+    liability_indicators = {
+        indicator.name: indicator for indicator in pattern_map["负债隐瞒模式"].indicators
+    }
+    cross_indicators = {
+        indicator.name: indicator for indicator in pattern_map["报表勾稽异常模式"].indicators
+    }
+    cash_indicators = {
+        indicator.name: indicator for indicator in pattern_map["现金流质量异常模式"].indicators
+    }
+    estimate_indicators = {
+        indicator.name: indicator for indicator in pattern_map["会计估计变更模式"].indicators
+    }
+
+    assert "原文摘录（第18页）: 本期研发支出资本化比例为60.00%。" in expense_indicators["研发费用资本化比例异常"].evidence
+    assert "原文摘录（第19页）: 固定资产折旧年限由5年延长至8年。" in expense_indicators["折旧政策变更"].evidence
+    assert "原文摘录（第44页）: 公司存在大额未决诉讼，涉案金额重大。" in liability_indicators["或有事项披露不足"].evidence
+    assert "原文摘录（第45页）: 公司通过结构化安排形成表外融资。" in liability_indicators["表外融资嫌疑"].evidence
+    assert "原文摘录（第31页）: 现金变动与现金流量表披露金额不一致。" in cross_indicators["报表勾稽关系不匹配"].evidence
+    assert "原文摘录（第28页）: 货币资金余额较高但利息收入明显偏低。" in cash_indicators["现金余额与利息收入不匹配"].evidence
+    assert "原文摘录（第21页）: 重要会计估计变更：延长固定资产折旧年限。" in estimate_indicators["会计估计变更"].evidence
+    assert "原文摘录（第24页）: 坏账准备计提比例较上期下降。" in estimate_indicators["坏账准备计提比例下降"].evidence

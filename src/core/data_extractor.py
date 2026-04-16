@@ -403,8 +403,10 @@ class PDFDataExtractor:
 
         return None, None
 
-    def _extract_change_note(self, keyword: str) -> Optional[str]:
-        """提取会计政策/估计变更说明，显式跳过“未发生变更/不适用”场景。"""
+    def _extract_change_note_with_source(
+        self, keyword: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """提取会计政策/估计变更说明及原文摘录，显式跳过“未发生变更/不适用”场景。"""
         none_keywords = ("未发生变更", "无主要", "无重要", "不适用", "未变更")
         lines = self._note_lines()
         header_pattern = re.compile(
@@ -422,18 +424,23 @@ class PDFDataExtractor:
             window_lines = lines[index:index + 5]
             window_text = "\n".join(window_lines)
             if any(token in window_text for token in none_keywords):
-                return None
+                return None, None
 
             for candidate_line in window_lines[1:]:
                 if not candidate_line or keyword in candidate_line:
                     continue
                 if any(token in candidate_line for token in none_keywords):
-                    return None
-                return candidate_line
+                    return None, None
+                return candidate_line, "\n".join([line, candidate_line])
 
-            return line
+            return line, line
 
-        return None
+        return None, None
+
+    def _extract_change_note(self, keyword: str) -> Optional[str]:
+        """提取会计政策/估计变更说明。"""
+        value, _ = self._extract_change_note_with_source(keyword)
+        return value
 
     def _extract_table_total_after_header(self, keyword: str, max_scan_lines: int = 8) -> Optional[str]:
         """从表格型附注中提取“合计”末值，适合递延收益这类金额表。"""
@@ -1056,13 +1063,21 @@ class PDFDataExtractor:
                     financial_data, "note:related_party_transactions", related_party_excerpt
                 )
 
-        policy_change = self._extract_change_note("会计政策变更")
+        policy_change, policy_excerpt = self._extract_change_note_with_source("会计政策变更")
         if policy_change:
             financial_data.notes["accounting_policy_changes"] = policy_change
+            if policy_excerpt:
+                self._record_evidence_ref(
+                    financial_data, "note:accounting_policy_changes", policy_excerpt
+                )
 
-        estimate_change = self._extract_change_note("会计估计变更")
+        estimate_change, estimate_excerpt = self._extract_change_note_with_source("会计估计变更")
         if estimate_change:
             financial_data.notes["accounting_estimate_changes"] = estimate_change
+            if estimate_excerpt:
+                self._record_evidence_ref(
+                    financial_data, "note:accounting_estimate_changes", estimate_excerpt
+                )
 
         deferred_income, deferred_income_excerpt = self._extract_table_total_after_header_with_source(
             "递延收益"

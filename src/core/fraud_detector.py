@@ -105,6 +105,15 @@ class FraudDetector:
         for field in fields:
             evidence.extend(self._build_page_evidence(financial_data, f"statement:{field}"))
         return evidence
+
+    def _build_note_evidence(
+        self, financial_data: FinancialData, note_key: str, *fallback_lines: str
+    ) -> List[str]:
+        """从附注证据中构建可回溯原文，并保留补充说明。"""
+        return self._combine_evidence(
+            self._build_page_evidence(financial_data, f"note:{note_key}"),
+            [line for line in fallback_lines if line],
+        )
     
     def detect_fraud_patterns(self, financial_data: FinancialData) -> List[FraudPattern]:
         """检测造假模式
@@ -724,10 +733,12 @@ class FraudDetector:
                 description="报告期内会计政策发生变更，可能影响财务数据可比性",
                 risk_level=RiskLevel.MEDIUM,
                 score=accounting_policy_changes_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "accounting_policy_changes",
                     "会计政策发生变更",
-                    "可能影响财务数据可比性"
-                ],
+                    "可能影响财务数据可比性",
+                ),
                 recommendations=[
                     "分析会计政策变更的影响",
                     "评估变更的合理性和必要性",
@@ -802,10 +813,12 @@ class FraudDetector:
                 description=f"公司有历史违规记录: {violation_info}",
                 risk_level=RiskLevel.HIGH,
                 score=pattern_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "historical_violations",
                     f"历史违规: {violation_info}",
-                    "存在历史违规记录，治理风险较高"
-                ],
+                    "存在历史违规记录，治理风险较高",
+                ),
                 recommendations=[
                     "关注公司治理结构",
                     "评估内部控制有效性",
@@ -931,10 +944,12 @@ class FraudDetector:
                         description=f"研发费用资本化比例为{ratio:.1%}，远高于行业惯例(通常<30%)",
                         risk_level=RiskLevel.HIGH,
                         score=rd_ratio_score,
-                        evidence=[
+                        evidence=self._build_note_evidence(
+                            financial_data,
+                            "rd_capitalization_ratio",
                             f"研发资本化率: {ratio:.1%}",
-                            "高资本化率可能将应费用化的支出计入资产以虚增利润"
-                        ],
+                            "高资本化率可能将应费用化的支出计入资产以虚增利润",
+                        ),
                         recommendations=[
                             "对比同行业研发资本化比例",
                             "检查资本化项目的真实性",
@@ -953,10 +968,12 @@ class FraudDetector:
                 description="报告期内折旧政策发生变更，可能通过延长折旧年限减少费用",
                 risk_level=RiskLevel.MEDIUM,
                 score=depreciation_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "depreciation_policy_change",
                     "折旧政策变更",
-                    "延长折旧年限可直接减少当期费用，虚增利润"
-                ],
+                    "延长折旧年限可直接减少当期费用，虚增利润",
+                ),
                 recommendations=[
                     "分析折旧政策变更对利润的影响金额",
                     "评估变更的合理性",
@@ -1010,10 +1027,12 @@ class FraudDetector:
                 description="在建工程长期未转入固定资产，可能持续利息资本化虚增资产",
                 risk_level=RiskLevel.HIGH,
                 score=construction_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "construction_in_progress_stagnant",
                     "在建工程长期不转固",
-                    "可能通过利息资本化虚增资产、虚减费用"
-                ],
+                    "可能通过利息资本化虚增资产、虚减费用",
+                ),
                 recommendations=[
                     "核查在建工程实际进度",
                     "分析利息资本化金额",
@@ -1055,10 +1074,12 @@ class FraudDetector:
                 description="商誉金额较大但减值计提不足，可能虚增资产",
                 risk_level=RiskLevel.HIGH,
                 score=goodwill_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "goodwill_insufficient_impairment",
                     "商誉减值计提不足",
-                    "可能通过少计提商誉减值虚增资产和利润"
-                ],
+                    "可能通过少计提商誉减值虚增资产和利润",
+                ),
                 recommendations=[
                     "分析商誉对应资产组的经营情况",
                     "评估商誉减值测试的合理性",
@@ -1100,10 +1121,12 @@ class FraudDetector:
                 description=f"存在重大或有事项: {contingent}，可能低估负债",
                 risk_level=RiskLevel.MEDIUM,
                 score=contingent_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "contingent_liabilities",
                     f"或有事项: {contingent}",
-                    "未决诉讼、对外担保等可能形成实际负债"
-                ],
+                    "未决诉讼、对外担保等可能形成实际负债",
+                ),
                 recommendations=[
                     "评估或有事项转化为实际负债的可能性",
                     "分析对外担保的被担保方信用状况",
@@ -1120,10 +1143,12 @@ class FraudDetector:
                 description="存在表外融资安排，可能隐藏负债",
                 risk_level=RiskLevel.HIGH,
                 score=off_balance_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "off_balance_sheet_items",
                     "存在表外融资安排",
-                    "可能通过SPE/空壳公司将负债转移至表外"
-                ],
+                    "可能通过SPE/空壳公司将负债转移至表外",
+                ),
                 recommendations=[
                     "分析表外融资的具体形式",
                     "评估表外项目对财务报表的影响",
@@ -1216,10 +1241,12 @@ class FraudDetector:
                 description=f"三张报表勾稽关系校验失败: {check_detail}",
                 risk_level=RiskLevel.HIGH,
                 score=check_failed_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "cross_statement_check_failed",
                     f"勾稽关系异常: {check_detail}",
-                    "报表间数据不一致，可能存在数据操纵"
-                ],
+                    "报表间数据不一致，可能存在数据操纵",
+                ),
                 recommendations=[
                     "逐项核对三张报表数据",
                     "检查是否存在调整分录未披露",
@@ -1290,10 +1317,12 @@ class FraudDetector:
                 description="现金及等价物余额异常高但利息收入很少，可能伪造现金",
                 risk_level=RiskLevel.HIGH,
                 score=cash_balance_interest_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "cash_balance_high_interest_low",
                     "现金余额高但利息收入少",
-                    "真实存款应产生合理利息收入"
-                ],
+                    "真实存款应产生合理利息收入",
+                ),
                 recommendations=[
                     "核实银行存款真实性",
                     "进行银行存款函证",
@@ -1335,10 +1364,12 @@ class FraudDetector:
                 description=f"报告期内会计估计发生变更: {changes}",
                 risk_level=RiskLevel.MEDIUM,
                 score=estimate_change_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "accounting_estimate_changes",
                     f"会计估计变更: {changes}",
-                    "会计估计变更可能影响利润，需评估变更的合理性"
-                ],
+                    "会计估计变更可能影响利润，需评估变更的合理性",
+                ),
                 recommendations=[
                     "分析会计估计变更对当期利润的影响金额",
                     "评估变更是否基于合理的商业理由",
@@ -1355,10 +1386,12 @@ class FraudDetector:
                 description="坏账准备计提比例下降，可能低估信用风险",
                 risk_level=RiskLevel.HIGH,
                 score=bad_debt_ratio_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "bad_debt_ratio_decreased",
                     "坏账准备计提比例下降",
-                    "调低计提比例可直接增加当期利润"
-                ],
+                    "调低计提比例可直接增加当期利润",
+                ),
                 recommendations=[
                     "分析计提比例下降的合理性",
                     "对比同行业坏账计提水平",
@@ -1399,10 +1432,12 @@ class FraudDetector:
                 description=f"报告期内审计师发生变更: {change_info}",
                 risk_level=RiskLevel.HIGH,
                 score=auditor_change_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "auditor_change",
                     f"审计师变更: {change_info}",
-                    "无合理理由更换审计师可能暗示内部冲突或掩盖"
-                ],
+                    "无合理理由更换审计师可能暗示内部冲突或掩盖",
+                ),
                 recommendations=[
                     "了解审计师变更的具体原因",
                     "检查前任审计师的辞任声明",
@@ -1418,10 +1453,12 @@ class FraudDetector:
                 description="审计费用异常波动，可能影响审计独立性",
                 risk_level=RiskLevel.MEDIUM,
                 score=audit_fee_score,
-                evidence=[
+                evidence=self._build_note_evidence(
+                    financial_data,
+                    "audit_fee_abnormal",
                     "审计费用异常波动",
-                    "审计费用大幅下降可能降低审计质量"
-                ],
+                    "审计费用大幅下降可能降低审计质量",
+                ),
                 recommendations=[
                     "对比历年审计费用",
                     "评估审计费用是否足以支撑充分审计",

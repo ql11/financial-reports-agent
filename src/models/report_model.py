@@ -17,6 +17,7 @@ class RiskAssessment:
     fraud_patterns: List[FraudPattern] = field(default_factory=list)
     key_risks: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
+    score_breakdown: Dict[str, Any] = field(default_factory=dict)
     
     def calculate_total_score(self):
         """计算总分和风险等级"""
@@ -42,7 +43,8 @@ class RiskAssessment:
             "risk_level": self.risk_level.value,
             "fraud_patterns": [pattern.to_dict() for pattern in self.fraud_patterns],
             "key_risks": self.key_risks,
-            "recommendations": self.recommendations
+            "recommendations": self.recommendations,
+            "score_breakdown": self.score_breakdown,
         }
 
 
@@ -132,6 +134,54 @@ class AnalysisReport:
             summary_parts.append(f"**投资建议**: {self.investment_recommendation}")
         
         self.executive_summary = "\n".join(summary_parts)
+
+    @staticmethod
+    def _collect_pattern_evidence(pattern: FraudPattern) -> List[str]:
+        """汇总造假模式下带页码的原始证据片段，按出现顺序去重"""
+        evidence_items: List[str] = []
+        seen = set()
+
+        for indicator in pattern.indicators:
+            for evidence in indicator.evidence:
+                normalized = evidence.strip()
+                if (
+                    normalized
+                    and "第" in normalized
+                    and "页" in normalized
+                    and normalized not in seen
+                ):
+                    evidence_items.append(normalized)
+                    seen.add(normalized)
+
+        return evidence_items
+
+    def _append_score_formula(self, markdown_parts: List[str]):
+        """渲染风险评分计算式与分项分值。"""
+        breakdown = self.risk_assessment.score_breakdown
+        if not breakdown:
+            return
+
+        markdown_parts.append("### 风险评分计算式")
+        formula = breakdown.get(
+            "formula",
+            "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)",
+        )
+        markdown_parts.append(formula)
+
+        labels = [
+            ("severity_score", "模式严重度"),
+            ("financial_severity", "财务严重度"),
+            ("density_score", "风险密度"),
+            ("breadth_score", "风险广度"),
+            ("concentration_score", "风险集中度"),
+            ("max_risk_bonus", "最高风险加分"),
+            ("total_before_cap", "封顶前总分"),
+            ("total_score", "最终总分"),
+        ]
+        for key, label in labels:
+            if key in breakdown:
+                markdown_parts.append(f"- {label}: {breakdown[key]:.1f}")
+        markdown_parts.append("")
     
     def to_markdown(self) -> str:
         """转换为Markdown格式"""
@@ -218,6 +268,7 @@ class AnalysisReport:
         markdown_parts.append(f"**总体风险等级**: {self.risk_assessment.risk_level.value}")
         markdown_parts.append(f"**风险评分**: {self.risk_assessment.total_score:.1f}/50")
         markdown_parts.append("")
+        self._append_score_formula(markdown_parts)
         
         # 造假模式
         if self.risk_assessment.fraud_patterns:
@@ -227,22 +278,11 @@ class AnalysisReport:
                 markdown_parts.append(f"{pattern.description}")
                 markdown_parts.append(f"**风险等级**: {pattern.risk_level.value}")
                 markdown_parts.append(f"**风险评分**: {pattern.total_score:.1f}")
-                if pattern.indicators:
-                    markdown_parts.append("##### 风险信号")
-                    for indicator in pattern.indicators:
-                        markdown_parts.append(f"###### {indicator.name}")
-                        markdown_parts.append(f"- 风险等级: {indicator.risk_level.value}")
-                        markdown_parts.append(f"- 风险评分: {indicator.score:.1f}")
-                        markdown_parts.append(f"- 指标说明: {indicator.description}")
-                        if indicator.evidence:
-                            markdown_parts.append("###### 证据片段")
-                            for evidence in indicator.evidence:
-                                markdown_parts.append(f"- {evidence}")
-                        if indicator.recommendations:
-                            markdown_parts.append("###### 建议动作")
-                            for recommendation in indicator.recommendations:
-                                markdown_parts.append(f"- {recommendation}")
-                        markdown_parts.append("")
+                pattern_evidence = self._collect_pattern_evidence(pattern)
+                if pattern_evidence:
+                    markdown_parts.append("##### 证据摘录")
+                    for evidence in pattern_evidence:
+                        markdown_parts.append(f"- {evidence}")
                 markdown_parts.append("")
         
         # 关键风险

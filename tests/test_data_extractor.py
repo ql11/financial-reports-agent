@@ -337,6 +337,36 @@ def test_parse_notes_extracts_estimate_changes_and_deferred_income_when_present(
     assert data.notes["deferred_income"] == "1,234,567.90"
 
 
+def test_parse_notes_records_page_number_for_policy_and_estimate_changes():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+1. 重要会计政策变更
+收入确认方法由时点法变更为时段法。
+
+2. 重要会计估计变更
+固定资产折旧年限由5年变更为8年。
+"""
+    extractor.page_texts = [extractor.text_content.strip()]
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert data.notes["accounting_policy_changes"] == "收入确认方法由时点法变更为时段法。"
+    assert data.notes["accounting_estimate_changes"] == "固定资产折旧年限由5年变更为8年。"
+    assert data.evidence_refs["note:accounting_policy_changes"] == [
+        {
+            "page": 1,
+            "excerpt": "1. 重要会计政策变更\n收入确认方法由时点法变更为时段法。",
+        }
+    ]
+    assert data.evidence_refs["note:accounting_estimate_changes"] == [
+        {
+            "page": 1,
+            "excerpt": "2. 重要会计估计变更\n固定资产折旧年限由5年变更为8年。",
+        }
+    ]
+
+
 def test_parse_company_info_preserves_going_concern_unqualified_opinion_and_records_evidence():
     extractor = PDFDataExtractor()
     extractor.text_content = """
