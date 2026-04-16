@@ -36,17 +36,15 @@ setup(
         "dev": [
             "pytest>=7.4.0",
             "pytest-cov>=4.1.0",
-            "pytest-asyncio>=0.21.0",
             "black>=23.0.0",
             "flake8>=6.0.0",
             "mypy>=1.5.0",
-            "pre-commit>=3.4.0",
         ],
     },
     entry_points={
         "console_scripts": [
-            "fraud-analyzer=scripts.analyze_fraud:main",
-            "batch-fraud-analyzer=scripts.batch_analyze:main",
+            "fraud-analyzer=src.cli:analyze_main",
+            "batch-fraud-analyzer=src.cli:batch_main",
         ],
     },
     include_package_data=True,

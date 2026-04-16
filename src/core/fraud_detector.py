@@ -709,18 +709,27 @@ class FraudDetector:
         - 检查在建工程与固定资产比例异常
         """
         indicators = []
+        rd_ratio_threshold = self._get_threshold(
+            "fraud_detection", "expense_capitalization", "rd_capitalization_ratio_warning", default=0.5
+        )
+        rd_ratio_score = self._get_threshold(
+            "fraud_detection", "expense_capitalization", "rd_capitalization_ratio_score", default=2.5
+        )
+        depreciation_score = self._get_threshold(
+            "fraud_detection", "expense_capitalization", "depreciation_policy_change_score", default=2.0
+        )
         
         # 检查附注中的费用资本化信息
         if "rd_capitalization_ratio" in financial_data.notes:
             try:
                 ratio = float(financial_data.notes["rd_capitalization_ratio"])
-                if ratio > 0.5:  # 研发资本化率超过50%
+                if ratio > rd_ratio_threshold:
                     indicator = FraudIndicator(
                         type=FraudType.EXPENSE_CAPITALIZATION,
                         name="研发费用资本化比例异常",
                         description=f"研发费用资本化比例为{ratio:.1%}，远高于行业惯例(通常<30%)",
                         risk_level=RiskLevel.HIGH,
-                        score=2.5,
+                        score=rd_ratio_score,
                         evidence=[
                             f"研发资本化率: {ratio:.1%}",
                             "高资本化率可能将应费用化的支出计入资产以虚增利润"
@@ -742,7 +751,7 @@ class FraudDetector:
                 name="折旧政策变更",
                 description="报告期内折旧政策发生变更，可能通过延长折旧年限减少费用",
                 risk_level=RiskLevel.MEDIUM,
-                score=2.0,
+                score=depreciation_score,
                 evidence=[
                     "折旧政策变更",
                     "延长折旧年限可直接减少当期费用，虚增利润"
@@ -874,6 +883,12 @@ class FraudDetector:
         - 其他应付款异常
         """
         indicators = []
+        contingent_score = self._get_threshold(
+            "fraud_detection", "liability_concealment", "contingent_liabilities_score", default=2.0
+        )
+        off_balance_score = self._get_threshold(
+            "fraud_detection", "liability_concealment", "off_balance_sheet_items_score", default=2.0
+        )
         
         # 或有事项披露不足
         if "contingent_liabilities" in financial_data.notes:
@@ -883,7 +898,7 @@ class FraudDetector:
                 name="或有事项披露不足",
                 description=f"存在重大或有事项: {contingent}，可能低估负债",
                 risk_level=RiskLevel.MEDIUM,
-                score=2.0,
+                score=contingent_score,
                 evidence=[
                     f"或有事项: {contingent}",
                     "未决诉讼、对外担保等可能形成实际负债"
@@ -903,7 +918,7 @@ class FraudDetector:
                 name="表外融资嫌疑",
                 description="存在表外融资安排，可能隐藏负债",
                 risk_level=RiskLevel.HIGH,
-                score=2.0,
+                score=off_balance_score,
                 evidence=[
                     "存在表外融资安排",
                     "可能通过SPE/空壳公司将负债转移至表外"
@@ -1101,6 +1116,12 @@ class FraudDetector:
         - 延长无形资产摊销年限
         """
         indicators = []
+        estimate_change_score = self._get_threshold(
+            "fraud_detection", "accounting_estimate_changes", "accounting_estimate_changes_score", default=2.0
+        )
+        bad_debt_ratio_score = self._get_threshold(
+            "fraud_detection", "accounting_estimate_changes", "bad_debt_ratio_decreased_score", default=2.5
+        )
         
         if "accounting_estimate_changes" in financial_data.notes:
             changes = financial_data.notes["accounting_estimate_changes"]
@@ -1109,7 +1130,7 @@ class FraudDetector:
                 name="会计估计变更",
                 description=f"报告期内会计估计发生变更: {changes}",
                 risk_level=RiskLevel.MEDIUM,
-                score=2.0,
+                score=estimate_change_score,
                 evidence=[
                     f"会计估计变更: {changes}",
                     "会计估计变更可能影响利润，需评估变更的合理性"
@@ -1129,7 +1150,7 @@ class FraudDetector:
                 name="坏账准备计提比例下降",
                 description="坏账准备计提比例下降，可能低估信用风险",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=bad_debt_ratio_score,
                 evidence=[
                     "坏账准备计提比例下降",
                     "调低计提比例可直接增加当期利润"
@@ -1159,6 +1180,12 @@ class FraudDetector:
         - 审计费用异常波动
         """
         indicators = []
+        auditor_change_score = self._get_threshold(
+            "fraud_detection", "auditor_change", "auditor_change_score", default=2.5
+        )
+        audit_fee_score = self._get_threshold(
+            "fraud_detection", "auditor_change", "audit_fee_abnormal_score", default=1.5
+        )
         
         if "auditor_change" in financial_data.notes:
             change_info = financial_data.notes["auditor_change"]
@@ -1167,7 +1194,7 @@ class FraudDetector:
                 name="审计师变更",
                 description=f"报告期内审计师发生变更: {change_info}",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=auditor_change_score,
                 evidence=[
                     f"审计师变更: {change_info}",
                     "无合理理由更换审计师可能暗示内部冲突或掩盖"
@@ -1186,7 +1213,7 @@ class FraudDetector:
                 name="审计费用异常波动",
                 description="审计费用异常波动，可能影响审计独立性",
                 risk_level=RiskLevel.MEDIUM,
-                score=1.5,
+                score=audit_fee_score,
                 evidence=[
                     "审计费用异常波动",
                     "审计费用大幅下降可能降低审计质量"

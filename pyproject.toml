@@ -42,8 +42,8 @@ dev = [
 ]
 
 [project.scripts]
-fraud-analyzer = "scripts.analyze_fraud:main"
-batch-fraud-analyzer = "scripts.batch_analyze:main"
+fraud-analyzer = "src.cli:analyze_main"
+batch-fraud-analyzer = "src.cli:batch_main"
 
 [tool.black]
 line-length = 88

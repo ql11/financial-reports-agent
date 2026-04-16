@@ -24,13 +24,15 @@
 - 过滤了目录样式的“关联交易 100%”噪声，避免误触发关联方字段。
 - 将主要异常检测阈值和风险评分权重接入 `configs/thresholds.yaml` 与 `configs/weights.yaml`。
 - 将 `FraudDetector` 中首批高频规则接入运行时配置，包括业绩背离、现金流背离、应收/存货异常、关联交易占比、现金收入比和应收占收入比。
+- 继续将 `FraudDetector` 中的产能异常、资产高估、报表勾稽和现金流质量规则迁移到 `configs/thresholds.yaml`。
+- 清理了打包与 CLI 入口配置：`requirements.txt` 只保留运行时依赖，`pyproject.toml` 与 `setup.py` 的脚本入口统一到共享 CLI 模块。
 - 新增了覆盖上述修复点的回归测试。
 
 ### 当前仍存在的风险
 
 - PDF 提取仍然高度依赖正则，版式变化的脆弱性较高。
 - 仍有不少已建模字段未完成提取，尤其是更完整的流动性、现金流和附注证据字段。
-- 虽然 `FraudDetector` 的首批高频规则已完成配置接线，但产能异常、报表勾稽、自由现金流等细则仍有剩余硬编码。
+- `FraudDetector` 中仍有经营现金流为负、坏账/存货准备、政府补助、历史违规等规则保留硬编码评分。
 - CLI、核心模块和工具层的日志与错误输出风格还不统一。
 - 批量 CLI 虽然暴露了 `--parallel`，但还没有真正实现并行处理。
 
@@ -42,12 +44,9 @@
 
 - 补全 `current_assets`、`current_liabilities`、`cash_and_equivalents`、`net_cash_flow_investing` 等关键字段的提取覆盖。
 - 为典型年报版式建立 PDF 样本夹具和回归测试。
-- 继续把 `FraudDetector` 里的细分规则阈值也迁移到 `configs/thresholds.yaml`，彻底清理剩余硬编码。
+- 继续把 `FraudDetector` 里剩余细分规则阈值迁移到 `configs/thresholds.yaml`，优先处理经营现金流为负、坏账/存货准备、政府补助和历史违规相关规则。
 - 统一 `print` 和 `logging` 的使用方式，形成一致的日志输出策略。
-- 清理打包和环境配置：
-  - 对齐 `requirements.txt` 与 `pyproject.toml`；
-  - 删除对 `pip install -r` 无效的 Python 版本声明；
-  - 降低对 `sys.path.insert(...)` 的依赖。
+- 补充共享 CLI 入口的烟雾测试与安装说明，确保工程化入口在本地运行和安装后调用时都稳定可用。
 
 ## 第二阶段：分析深度
 

@@ -176,3 +176,92 @@ fraud_detection:
     assert cross_scores["经营现金流与净利润严重背离"] == 4.1
     assert cross_scores["报表勾稽关系不匹配"] == 4.5
     assert cash_scores["自由现金流为负但净利润为正"] == 4.4
+
+
+def test_fraud_detector_uses_config_for_expense_and_liability_patterns(tmp_path):
+    thresholds_path = tmp_path / "thresholds.yaml"
+    thresholds_path.write_text(
+        """
+fraud_detection:
+  expense_capitalization:
+    rd_capitalization_ratio_warning: 0.4
+    rd_capitalization_ratio_score: 4.2
+    depreciation_policy_change_score: 3.8
+  liability_concealment:
+    contingent_liabilities_score: 3.7
+    off_balance_sheet_items_score: 4.4
+""".strip(),
+        encoding="utf-8",
+    )
+
+    detector = FraudDetector(thresholds_config_path=str(thresholds_path))
+    current = FinancialStatement(operating_revenue=100.0, total_assets=100.0, net_profit=10.0)
+    data = build_financial_data(
+        current=current,
+        notes={
+            "rd_capitalization_ratio": "0.6",
+            "depreciation_policy_change": True,
+            "contingent_liabilities": "存在大额未决诉讼",
+            "off_balance_sheet_items": True,
+        },
+    )
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    expense_pattern = pattern_map["费用资本化模式"]
+    liability_pattern = pattern_map["负债隐瞒模式"]
+
+    expense_scores = {indicator.name: indicator.score for indicator in expense_pattern.indicators}
+    liability_scores = {
+        indicator.name: indicator.score for indicator in liability_pattern.indicators
+    }
+
+    assert expense_scores["研发费用资本化比例异常"] == 4.2
+    assert expense_scores["折旧政策变更"] == 3.8
+    assert liability_scores["或有事项披露不足"] == 3.7
+    assert liability_scores["表外融资嫌疑"] == 4.4
+
+
+def test_fraud_detector_uses_config_for_estimate_and_auditor_patterns(tmp_path):
+    thresholds_path = tmp_path / "thresholds.yaml"
+    thresholds_path.write_text(
+        """
+fraud_detection:
+  accounting_estimate_changes:
+    accounting_estimate_changes_score: 3.6
+    bad_debt_ratio_decreased_score: 4.5
+  auditor_change:
+    auditor_change_score: 4.6
+    audit_fee_abnormal_score: 3.3
+""".strip(),
+        encoding="utf-8",
+    )
+
+    detector = FraudDetector(thresholds_config_path=str(thresholds_path))
+    current = FinancialStatement(operating_revenue=100.0, total_assets=100.0, net_profit=10.0)
+    data = build_financial_data(
+        current=current,
+        notes={
+            "accounting_estimate_changes": "延长固定资产折旧年限",
+            "bad_debt_ratio_decreased": True,
+            "auditor_change": "更换会计师事务所",
+            "audit_fee_abnormal": True,
+        },
+    )
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    estimate_pattern = pattern_map["会计估计变更模式"]
+    auditor_pattern = pattern_map["审计师变更模式"]
+
+    estimate_scores = {
+        indicator.name: indicator.score for indicator in estimate_pattern.indicators
+    }
+    auditor_scores = {indicator.name: indicator.score for indicator in auditor_pattern.indicators}
+
+    assert estimate_scores["会计估计变更"] == 3.6
+    assert estimate_scores["坏账准备计提比例下降"] == 4.5
+    assert auditor_scores["审计师变更"] == 4.6
+    assert auditor_scores["审计费用异常波动"] == 3.3

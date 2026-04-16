@@ -1,8 +1,5 @@
 # 财报造假分析系统依赖库
 
-# 核心依赖
-python>=3.8
-
 # 数据处理和分析
 pandas>=2.0.0
 numpy>=1.24.0
@@ -29,4 +26,5 @@ loguru>=0.7.0
 # 使用说明：
 # 1. 基础安装：pip install -r requirements.txt
 # 2. 包含PDF解析：已包含pdfplumber
-# 3. 开发工具：取消注释开发依赖并安装
+# 3. Python 版本约束见 pyproject.toml
+# 4. 开发工具：取消注释开发依赖并安装

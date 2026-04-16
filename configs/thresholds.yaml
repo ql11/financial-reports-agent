@@ -145,6 +145,23 @@ fraud_detection:
     free_cash_flow_negative_score: 2.5        # 自由现金流为负评分
     cash_balance_interest_mismatch_score: 2.5 # 现金余额与利息收入不匹配评分
 
+  expense_capitalization:
+    rd_capitalization_ratio_warning: 0.5      # 研发资本化率高于50%预警
+    rd_capitalization_ratio_score: 2.5        # 研发资本化比例异常评分
+    depreciation_policy_change_score: 2.0     # 折旧政策变更评分
+
+  liability_concealment:
+    contingent_liabilities_score: 2.0         # 或有事项披露不足评分
+    off_balance_sheet_items_score: 2.0        # 表外融资嫌疑评分
+
+  accounting_estimate_changes:
+    accounting_estimate_changes_score: 2.0    # 会计估计变更评分
+    bad_debt_ratio_decreased_score: 2.5       # 坏账准备计提比例下降评分
+
+  auditor_change:
+    auditor_change_score: 2.5                 # 审计师变更评分
+    audit_fee_abnormal_score: 1.5             # 审计费用异常波动评分
+
 # 风险等级阈值
 risk_levels:
   critical: 30.0  # 极高风险阈值
