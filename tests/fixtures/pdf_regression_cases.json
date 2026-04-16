@@ -1,0 +1,107 @@
+[
+  {
+    "path": "inputs/H2_AN202603311820917776_1.pdf",
+    "company_name": "浙江亚迪纳新材料科技股份有限公司",
+    "stock_code": "833301",
+    "report_year": 2025,
+    "current": {
+      "operating_revenue": 111366098.57,
+      "net_profit": 13209661.65,
+      "net_profit_attributable": 12477098.91,
+      "cash_and_equivalents": 35312377.38,
+      "current_assets": 89265690.89,
+      "current_liabilities": 22322042.0,
+      "inventory": 5565539.05,
+      "accounts_receivable": 28945017.84,
+      "net_cash_flow_investing": -2101191.67
+    },
+    "previous": {
+      "operating_revenue": 118199226.51,
+      "cash_and_equivalents": 12792378.82,
+      "current_assets": 71044366.54,
+      "current_liabilities": 21761339.74,
+      "inventory": 4670255.21,
+      "accounts_receivable": 30582101.06
+    },
+    "notes": {
+      "government_subsidies": "915,030.00",
+      "bad_debt_provision": "383,323.82",
+      "inventory_provision": "1,112,525.26"
+    },
+    "missing_notes": [
+      "accounting_policy_changes",
+      "accounting_estimate_changes",
+      "deferred_income"
+    ]
+  },
+  {
+    "path": "inputs/H2_AN202604161821261879_1.pdf",
+    "company_name": "重庆瑞法科技股份有限公司",
+    "stock_code": "839667",
+    "report_year": 2025,
+    "current": {
+      "operating_revenue": 1473584.91,
+      "net_profit": 62360.44,
+      "net_profit_attributable": 62360.44,
+      "cash_and_equivalents": 542973.33,
+      "current_assets": 612965.65,
+      "current_liabilities": 380761.79,
+      "inventory": 55673.91,
+      "accounts_receivable": 23750.0,
+      "net_cash_flow_investing": 0.0
+    },
+    "previous": {
+      "operating_revenue": 94339.63,
+      "net_profit": -1052619.66,
+      "cash_and_equivalents": 688978.58,
+      "current_assets": 817386.51,
+      "current_liabilities": 361243.81
+    },
+    "notes": {
+      "related_party_transactions": "58.9%",
+      "government_subsidies": "330.24",
+      "bad_debt_provision": "5,381,386.67",
+      "inventory_provision": "55,673.91"
+    },
+    "missing_notes": [
+      "accounting_policy_changes",
+      "accounting_estimate_changes",
+      "deferred_income"
+    ]
+  },
+  {
+    "path": "inputs/H2_AN202604161821261924_1.pdf",
+    "company_name": "江西瑞尔泰控制工程股份有限公司",
+    "stock_code": "839841",
+    "report_year": 2025,
+    "current": {
+      "operating_revenue": 224861569.31,
+      "net_profit": 438643.21,
+      "net_profit_attributable": 659358.66,
+      "cash_and_equivalents": 55765666.18,
+      "current_assets": 124936173.72,
+      "current_liabilities": 84389688.6,
+      "inventory": 42824470.62,
+      "accounts_receivable": 21249889.68,
+      "net_cash_flow_investing": -52100.0
+    },
+    "previous": {
+      "operating_revenue": 280589139.19,
+      "cash_and_equivalents": 37776213.9,
+      "current_assets": 111113276.21,
+      "current_liabilities": 68706660.22,
+      "inventory": 40936353.05,
+      "accounts_receivable": 27450067.49
+    },
+    "notes": {
+      "government_subsidies": "539,399.73",
+      "bad_debt_provision": "1,386,382.73",
+      "inventory_provision": "364,110.04"
+    },
+    "missing_notes": [
+      "accounting_policy_changes",
+      "accounting_estimate_changes",
+      "deferred_income"
+    ]
+  }
+]

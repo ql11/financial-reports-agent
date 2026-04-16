@@ -223,3 +223,56 @@ def test_parse_notes_prefers_explicit_note_section_over_header_rows():
     extractor._parse_notes(data)
 
     assert data.notes["inventory_provision"] == "1,112,525.26"
+
+
+def test_parse_notes_skips_policy_sections_without_amount_evidence():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+（二十）政府补助
+政府补助，是公司从政府无偿取得货币性资产或非货币性资产。
+1. 与资产相关的政府补助判断依据及会计处理方法
+
+应收账款
+对于应收账款，若某一客户信用风险特征发生显著变化，本公司对该应收款项单项计提坏账准备。
+"""
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert "government_subsidies" not in data.notes
+    assert "bad_debt_provision" not in data.notes
+
+
+def test_parse_notes_does_not_flag_policy_or_estimate_changes_when_report_says_none():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+1. 重要会计政策变更
+本报告期公司主要会计政策未发生变更。
+2. 重要会计估计变更
+本报告期公司主要会计估计未发生变更。
+"""
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert "accounting_policy_changes" not in data.notes
+    assert "accounting_estimate_changes" not in data.notes
+
+
+def test_parse_notes_extracts_estimate_changes_and_deferred_income_when_present():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+会计估计变更
+固定资产折旧年限由5年变更为8年。
+
+递延收益
+项目 期初余额 本期增加 本期减少 期末余额
+政府补助 800,000.00 500,000.00 65,432.10 1,234,567.90
+合计 800,000.00 500,000.00 65,432.10 1,234,567.90
+"""
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert data.notes["accounting_estimate_changes"] == "固定资产折旧年限由5年变更为8年。"
+    assert data.notes["deferred_income"] == "1,234,567.90"

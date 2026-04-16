@@ -119,6 +119,9 @@ Financial_Reports/
 
 ```bash
 pip install -r requirements.txt
+
+# 开发模式安装，启用共享 CLI 入口
+pip install -e .
 ```
 
 ### 2. 使用命令行工具
@@ -138,9 +141,20 @@ python main.py analyze path/to/report.pdf --output custom_reports/ --format json
 
 # 显示详细输出
 python main.py analyze path/to/report.pdf --verbose
+
+# 使用安装后的共享 CLI 入口
+fraud-analyzer path/to/report.pdf
+batch-fraud-analyzer inputs/*.pdf --format json
 ```
 
-### 3. 使用Python API
+### 3. CLI 安装验证
+
+```bash
+# 验证共享 CLI 入口与安装说明
+python -m pytest tests/test_cli_smoke.py tests/test_project_metadata.py -v
+```
+
+### 4. 使用Python API
 
 ```python
 from src.core.analyzer import FinancialFraudAnalyzer
@@ -161,7 +175,7 @@ print(f"风险评分: {report.risk_assessment.total_score:.1f}/50")
 print(f"投资建议: {report.investment_recommendation}")
 ```
 
-### 4. 批量分析
+### 5. 批量分析
 
 ```python
 from src.core.analyzer import FinancialFraudAnalyzer

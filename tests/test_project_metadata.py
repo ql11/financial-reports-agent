@@ -61,3 +61,12 @@ def test_console_scripts_use_shared_cli_module():
         "fraud-analyzer": "src.cli:analyze_main",
         "batch-fraud-analyzer": "src.cli:batch_main",
     }
+
+
+def test_readme_documents_install_and_console_script_usage():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "pip install -r requirements.txt" in readme
+    assert "pip install -e ." in readme
+    assert "fraud-analyzer" in readme
+    assert "batch-fraud-analyzer" in readme

@@ -129,21 +129,56 @@ class PDFDataExtractor:
 
     def _extract_amounts_from_line(self, line: str) -> List[float]:
         """从单行报表文本中提取金额，忽略附注编号等小整数。"""
+        normalized = re.sub(r'附注[一二三四五六七八九十\d、（）()]+', ' ', line)
+        normalized = re.sub(
+            r'[一二三四五六七八九十]+、(?:（[一二三四五六七八九十\d]+）|\d+)',
+            ' ',
+            normalized,
+        )
         amount_pattern = re.compile(
             r'-?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)'
         )
         values = []
-        for token in amount_pattern.findall(line):
+        for token in amount_pattern.findall(normalized):
             value = self._parse_number(token)
             if value is not None:
                 values.append(value)
         return values
 
+    def _line_matches_statement_label(self, line: str, label: str) -> bool:
+        """限制字段标签必须出现在行首附近，避免误命中正文说明或附注叙述。"""
+        index = line.find(label)
+        if index < 0 or index > 6:
+            return False
+
+        suffix = line[index + len(label):].lstrip()
+        if suffix and re.match(r'^[\u4e00-\u9fa5]', suffix):
+            allowed_prefixes = ("附注", "（", "(", "：", ":", "五", "六", "七", "八", "九", "十")
+            if not suffix.startswith(allowed_prefixes):
+                return False
+
+        invalid_tokens = (
+            "周转率",
+            "变动比例",
+            "余额为",
+            "判断标准",
+            "计提",
+            "主要包括",
+            "分类",
+            "信用风险",
+            "可变现净值",
+            "账面余额",
+            "账面价值",
+            "确认时",
+            "组合",
+        )
+        return not any(token in line for token in invalid_tokens)
+
     def _find_statement_amounts(self, lines: List[str], labels: List[str]) -> Optional[List[float]]:
         """按标签优先级从可信报表行中提取 1-2 个金额。"""
         for label in labels:
             for line in lines:
-                if label not in line:
+                if not self._line_matches_statement_label(line, label):
                     continue
                 values = self._extract_amounts_from_line(line)
                 if 1 <= len(values) <= 2:
@@ -187,11 +222,17 @@ class PDFDataExtractor:
             return 0
         return 1
 
-    def _extract_note_amount(self, keyword: str, stop_keywords: List[str]) -> Optional[str]:
+    def _extract_note_amount(
+        self,
+        keyword: str,
+        stop_keywords: List[str],
+        context_keywords: Optional[List[str]] = None,
+    ) -> Optional[str]:
         """在关键词附近提取金额，避免跨附注串段误取。"""
         amount_pattern = re.compile(
             r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)(?:[亿万]?元)?)'
         )
+        context_keywords = context_keywords or []
         lines = self._note_lines()
         candidate_indexes = [
             (self._note_keyword_priority(line, keyword), index)
@@ -213,7 +254,12 @@ class PDFDataExtractor:
                     keyword_suffix = candidate_line.split(keyword, 1)[1]
                     numeric_match = amount_pattern.search(keyword_suffix)
                     if numeric_match:
-                        return numeric_match.group(1)
+                        if (
+                            "元" in numeric_match.group(1)
+                            or "合计" in candidate_line
+                            or any(token in candidate_line for token in context_keywords)
+                        ):
+                            return numeric_match.group(1)
 
             for candidate_line in section_lines:
                 if "合计" in candidate_line:
@@ -221,10 +267,64 @@ class PDFDataExtractor:
                     if numeric_matches:
                         return numeric_matches[-1]
 
-            section_text = "\n".join(section_lines)
-            numeric_match = amount_pattern.search(section_text)
-            if numeric_match:
-                return numeric_match.group(1)
+        return None
+
+    def _extract_change_note(self, keyword: str) -> Optional[str]:
+        """提取会计政策/估计变更说明，显式跳过“未发生变更/不适用”场景。"""
+        none_keywords = ("未发生变更", "无主要", "无重要", "不适用", "未变更")
+        lines = self._note_lines()
+        header_pattern = re.compile(
+            rf'^(?:[（(]?\d+[)）.、]?\s*)?(?:重要)?{re.escape(keyword)}'
+        )
+
+        for index, line in enumerate(lines):
+            if keyword not in line:
+                continue
+            if "加：" in line:
+                continue
+            if not header_pattern.search(line):
+                continue
+
+            window_lines = lines[index:index + 5]
+            window_text = "\n".join(window_lines)
+            if any(token in window_text for token in none_keywords):
+                return None
+
+            for candidate_line in window_lines[1:]:
+                if not candidate_line or keyword in candidate_line:
+                    continue
+                if any(token in candidate_line for token in none_keywords):
+                    return None
+                return candidate_line
+
+            return line
+
+        return None
+
+    def _extract_table_total_after_header(self, keyword: str, max_scan_lines: int = 8) -> Optional[str]:
+        """从表格型附注中提取“合计”末值，适合递延收益这类金额表。"""
+        amount_pattern = re.compile(
+            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)(?:[亿万]?元)?)'
+        )
+        lines = self._note_lines()
+
+        for index, line in enumerate(lines):
+            if line.strip() != keyword:
+                continue
+
+            table_lines = lines[index + 1:index + 1 + max_scan_lines]
+            if not any(
+                "项目" in candidate_line and any(token in candidate_line for token in ("期初余额", "期末余额", "本期"))
+                for candidate_line in table_lines
+            ):
+                continue
+
+            for candidate_line in table_lines:
+                if "合计" not in candidate_line:
+                    continue
+                numeric_matches = amount_pattern.findall(candidate_line)
+                if numeric_matches:
+                    return numeric_matches[-1]
 
         return None
 
@@ -690,23 +790,42 @@ class PDFDataExtractor:
     def _parse_notes(self, financial_data: FinancialData):
         """解析附注信息"""
         note_keywords = {
-            "government_subsidies": "政府补助",
-            "bad_debt_provision": "坏账准备",
-            "inventory_provision": "存货跌价准备",
+            "government_subsidies": {
+                "keyword": "政府补助",
+                "context_keywords": ["金额", "余额", "收到", "获得", "补助"],
+            },
+            "bad_debt_provision": {
+                "keyword": "坏账准备",
+                "context_keywords": ["余额", "合计", "减：", "计提"],
+            },
+            "inventory_provision": {
+                "keyword": "存货跌价准备",
+                "context_keywords": ["余额", "合计", "减值准备", "跌价准备"],
+            },
         }
-        stop_keywords = list(note_keywords.values())
+        stop_keywords = [config["keyword"] for config in note_keywords.values()]
 
         related_party_transactions = self._extract_related_party_percentage()
         if related_party_transactions:
             financial_data.notes["related_party_transactions"] = related_party_transactions
 
-        if re.search(r"会计政策变更", self.text_content, re.IGNORECASE | re.DOTALL):
-            financial_data.notes["accounting_policy_changes"] = True
+        policy_change = self._extract_change_note("会计政策变更")
+        if policy_change:
+            financial_data.notes["accounting_policy_changes"] = policy_change
 
-        for key, keyword in note_keywords.items():
+        estimate_change = self._extract_change_note("会计估计变更")
+        if estimate_change:
+            financial_data.notes["accounting_estimate_changes"] = estimate_change
+
+        deferred_income = self._extract_table_total_after_header("递延收益")
+        if deferred_income:
+            financial_data.notes["deferred_income"] = deferred_income
+
+        for key, config in note_keywords.items():
             value = self._extract_note_amount(
-                keyword,
-                stop_keywords=[item for item in stop_keywords if item != keyword],
+                config["keyword"],
+                stop_keywords=[item for item in stop_keywords if item != config["keyword"]],
+                context_keywords=config["context_keywords"],
             )
             if value:
                 financial_data.notes[key] = value
