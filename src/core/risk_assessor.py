@@ -209,7 +209,7 @@ class RiskAssessor:
         risk_assessment.total_score = round(total_score, 1)
         risk_assessment.risk_level = self._determine_risk_level(total_score, max_risk, risk_density)
         risk_assessment.score_breakdown = {
-            "formula": "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)",
+            "formula": "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)",
             "severity_score": round(severity_score, 1),
             "financial_severity": round(financial_severity, 1),
             "density_score": round(density_score, 1),

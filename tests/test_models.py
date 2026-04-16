@@ -77,7 +77,7 @@ def test_analysis_report_markdown_includes_paged_evidence_and_score_formula():
         risk_level=RiskLevel.HIGH,
         fraud_patterns=[pattern],
         score_breakdown={
-            "formula": "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)",
+            "formula": "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)",
             "severity_score": 9.0,
             "financial_severity": 4.0,
             "density_score": 3.0,
@@ -105,7 +105,7 @@ def test_analysis_report_markdown_includes_paged_evidence_and_score_formula():
     assert "原文摘录（第12页）" in markdown
     assert "原文摘录（第47页）" in markdown
     assert "### 风险评分计算式" in markdown
-    assert "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)" in markdown
+    assert "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)" in markdown
     assert "- 模式严重度: 9.0" in markdown
 
 

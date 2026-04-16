@@ -164,7 +164,7 @@ class AnalysisReport:
         markdown_parts.append("### 风险评分计算式")
         formula = breakdown.get(
             "formula",
-            "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)",
+            "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)",
         )
         markdown_parts.append(formula)
 
