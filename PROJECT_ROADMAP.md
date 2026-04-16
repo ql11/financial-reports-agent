@@ -1,105 +1,105 @@
-# Project Roadmap
+# 项目路线图
 
-## Purpose
+## 文档用途
 
-This document is the living roadmap for `financial-reports-agent`.
+这是 `financial-reports-agent` 的长期维护路线图。
 
-Update it whenever one of the following happens:
+出现以下情况时需要同步更新本文件：
 
-- a roadmap item is completed;
-- a new remediation priority is identified;
-- a new feature direction is accepted;
-- scope or sequencing changes materially.
+- 路线图中的事项已完成；
+- 识别出新的高优先级改进项；
+- 确认了新的功能拓展方向；
+- 阶段目标或执行顺序发生明显变化。
 
-## Current Status
+## 当前状态
 
-### Completed in this pass
+### 本轮已完成
 
-- Removed implicit single-file report saving from the analyzer workflow.
-- Restored consistency between runtime risk scoring and serialized risk scoring.
-- Added turnover ratio calculation for fields already used by downstream rules.
-- Made batch analysis honor the requested output format.
-- Expanded extractor coverage for sample-report stock code and key liquidity fields.
-- Added regression tests for the repaired behaviors.
+- 去掉了分析器内部的隐式单文件报告保存。
+- 修复了运行时风险评分与序列化输出评分不一致的问题。
+- 补全了已被下游规则使用但之前未计算的周转率字段。
+- 修复了批量分析不尊重 `--format` 参数的问题。
+- 针对样本年报补充了股票代码和关键流动性字段的提取规则。
+- 新增了覆盖上述修复点的回归测试。
 
-### Current risks still open
+### 当前仍存在的风险
 
-- PDF extraction coverage is narrow and still relies on brittle regex matching.
-- Several modeled fields are not extracted yet, especially liquidity and investment-cashflow inputs.
-- Runtime thresholds and weights are still largely hard-coded rather than driven by config.
-- Logging and error reporting are inconsistent across CLI, core modules, and utilities.
-- Batch CLI exposes `--parallel` but does not implement real parallel execution.
+- PDF 提取仍然高度依赖正则，版式变化的脆弱性较高。
+- 仍有不少已建模字段未完成提取，尤其是更完整的流动性、现金流和附注证据字段。
+- 运行时阈值和权重仍主要硬编码在代码里，尚未真正由配置驱动。
+- CLI、核心模块和工具层的日志与错误输出风格还不统一。
+- 批量 CLI 虽然暴露了 `--parallel`，但还没有真正实现并行处理。
 
-## Phase 1: Stability And Trustworthiness
+## 第一阶段：稳定性与可信度
 
-Goal: make outputs defensible and reduce false positives or false negatives caused by incomplete plumbing.
+目标：先把输出结果做得可解释、可复现、可验证，减少因提取缺口和流程不一致导致的误报或漏报。
 
-### Priority items
+### 重点事项
 
-- Expand extractor coverage for `current_assets`, `current_liabilities`, `cash_and_equivalents`, and `net_cash_flow_investing`.
-- Build fixture-based tests for representative annual report PDF layouts.
-- Wire `configs/thresholds.yaml` and `configs/weights.yaml` into detection and scoring logic.
-- Replace mixed `print`/`logging` behavior with a unified logging strategy.
-- Clean up packaging and environment setup:
-  - align `requirements.txt` with `pyproject.toml`;
-  - remove invalid Python-version entries from pip requirements;
-  - reduce reliance on `sys.path.insert(...)`.
+- 补全 `current_assets`、`current_liabilities`、`cash_and_equivalents`、`net_cash_flow_investing` 等关键字段的提取覆盖。
+- 为典型年报版式建立 PDF 样本夹具和回归测试。
+- 将 `configs/thresholds.yaml` 与 `configs/weights.yaml` 真正接入检测与评分逻辑。
+- 统一 `print` 和 `logging` 的使用方式，形成一致的日志输出策略。
+- 清理打包和环境配置：
+  - 对齐 `requirements.txt` 与 `pyproject.toml`；
+  - 删除对 `pip install -r` 无效的 Python 版本声明；
+  - 降低对 `sys.path.insert(...)` 的依赖。
 
-## Phase 2: Analysis Depth
+## 第二阶段：分析深度
 
-Goal: improve signal quality and expand the evidence behind each conclusion.
+目标：提升信号质量，让每一个结论都能追溯到更扎实的数据证据。
 
-### Priority items
+### 重点事项
 
-- Add multi-year trend extraction instead of relying mainly on current-year vs prior-year comparisons.
-- Introduce industry benchmark loading and peer comparison.
-- Strengthen cross-statement consistency checks with explicit reconciliation rules.
-- Add evidence traceability so each fraud signal can point back to extracted numbers or note text.
-- Distinguish between missing data, weak signal, and confirmed anomaly in report output.
+- 从“当年 vs 上年”扩展到多年度趋势提取与趋势分析。
+- 引入行业基准和同行对比能力。
+- 强化三大报表勾稽校验，形成明确的校验规则集。
+- 为每个造假信号增加证据追踪，能够指向提取出的数字或附注片段。
+- 在输出层区分“缺失数据”“弱信号”“明确异常”三类状态。
 
-## Phase 3: Productization
+## 第三阶段：产品化
 
-Goal: make the project easier to operate, integrate, and scale.
+目标：让项目更容易操作、集成和扩展，而不仅仅是一个本地脚本集合。
 
-### Priority items
+### 重点事项
 
-- Define a stable service/API layer on top of the current Python package.
-- Implement real batch concurrency and progress reporting.
-- Add structured output schemas for downstream systems.
-- Improve report rendering options and templates.
-- Add environment-aware configuration loading for local/dev/prod use.
+- 在现有 Python 包之上定义稳定的服务/API 层。
+- 实现真正的批量并行处理与进度反馈。
+- 增加面向下游系统的结构化输出协议。
+- 改进报告模板与导出形式。
+- 增加按环境加载配置的能力，例如 local/dev/prod。
 
-## Functional Expansion Directions
+## 功能拓展方向
 
-These are candidate feature tracks for future releases.
+以下是后续版本可以逐步推进的能力方向。
 
-### Data source expansion
+### 数据源拓展
 
-- Support structured inputs beyond PDF, such as CSV, Excel, and XBRL-derived data.
-- Add hybrid ingestion that combines extracted PDF text with manually supplied corrections.
+- 在 PDF 之外支持 CSV、Excel、XBRL 等结构化输入。
+- 支持“PDF 自动提取 + 人工纠错补录”的混合输入模式。
 
-### Richer fraud analysis
+### 更丰富的造假分析
 
-- Governance and auditor-history knowledge base for recurring entity risk.
-- Related-party network analysis across multiple reports or issuers.
-- Quarter-level seasonality checks, including year-end revenue concentration detection.
-- Explicit earnings-quality scoring with factor attribution.
+- 建立公司治理、审计历史、违规历史知识库。
+- 支持跨公司、跨年度的关联方网络分析。
+- 增加季度维度的季节性检查，例如年末收入集中确认。
+- 增加盈利质量评分，并给出因子分解。
 
-### Analyst workflow
+### 分析师工作流
 
-- Review queue for flagged companies.
-- Human annotation and override support for extracted fields and risk judgments.
-- Report comparison across years and across peers.
+- 增加高风险公司复核队列。
+- 支持人工标注、字段修正和风险判断覆盖。
+- 支持跨年度、跨同行的报告对比。
 
-### Explainability and auditability
+### 可解释性与审计追踪
 
-- Per-signal evidence snippets in generated reports.
-- Confidence scoring for extracted fields.
-- Structured reasoning traces showing how final risk scores were produced.
+- 在报告中展示每个风险信号对应的证据片段。
+- 为提取字段增加置信度评分。
+- 输出结构化推理链，说明最终风险分是如何得到的。
 
-## Suggested Execution Order
+## 建议执行顺序
 
-1. Finish Phase 1 data completeness and configuration wiring.
-2. Add extractor fixtures and regression coverage before broader rule expansion.
-3. Improve explainability together with Phase 2 signal-depth work.
-4. Productize only after scoring and extraction reliability improve.
+1. 先完成第一阶段里的字段补全、配置接线和基础测试。
+2. 在提取稳定之前，不扩大规则复杂度。
+3. 在第二阶段推进时，同步建设可解释性能力。
+4. 只有在提取和评分可靠性明显提升后，再推进产品化工作。

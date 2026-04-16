@@ -93,6 +93,21 @@ class PDFDataExtractor:
             return float(s)
         except:
             return None
+
+    def _extract_note_amount(self, pattern: str) -> Optional[str]:
+        """提取附注中的金额，过滤掉注释编号之类的伪匹配。"""
+        match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
+        if not match:
+            return None
+
+        value = match.group(1)
+        numeric_match = re.search(
+            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)',
+            value
+        )
+        if numeric_match:
+            return numeric_match.group(1)
+        return None
     
     def _parse_company_info(self, financial_data: FinancialData):
         """解析公司信息"""
@@ -348,6 +363,18 @@ class PDFDataExtractor:
                 if prov and inventory:
                     inventory = inventory - prov
             result['current']['inventory'] = inventory
+        elif not result['current'].get('inventory'):
+            inv_balance_match = re.search(
+                r'存货(?:\s+[^\s]+)?\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+                text
+            )
+            if inv_balance_match:
+                result['current']['inventory'] = self._parse_number(
+                    inv_balance_match.group(1)
+                )
+                result['previous']['inventory'] = self._parse_number(
+                    inv_balance_match.group(2)
+                )
         
         # === 应收账款 ===
         ar_match = re.search(
@@ -438,19 +465,21 @@ class PDFDataExtractor:
         notes_patterns = {
             "related_party_transactions": r"关联交易.*?(\d+\.?\d*%)",
             "accounting_policy_changes": r"会计政策变更",
-            "government_subsidies": r"政府补助.*?(\d+\.?\d*[亿万]?元)",
-            "bad_debt_provision": r"坏账准备.*?(\d+\.?\d*[亿万]?元)",
-            "inventory_provision": r"存货跌价准备.*?(\d+\.?\d*[亿万]?元)"
+            "government_subsidies": r"政府补助.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)",
+            "bad_debt_provision": r"坏账准备.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)",
+            "inventory_provision": r"存货跌价准备.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)"
         }
         
         for key, pattern in notes_patterns.items():
-            match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
-            if match:
-                if key == "related_party_transactions":
-                    value = match.group(1)
-                    financial_data.notes[key] = value
-                elif key == "accounting_policy_changes":
+            if key == "related_party_transactions":
+                match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
+                if match:
+                    financial_data.notes[key] = match.group(1)
+            elif key == "accounting_policy_changes":
+                match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
+                if match:
                     financial_data.notes[key] = True
-                else:
-                    value = match.group(1)
+            else:
+                value = self._extract_note_amount(pattern)
+                if value:
                     financial_data.notes[key] = value

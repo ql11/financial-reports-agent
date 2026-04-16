@@ -28,6 +28,7 @@ def test_extract_key_figures_parses_liquidity_fields_from_balance_sheet_text():
 经营活动产生的现金流量净额 20,469,639.54 21,684,371.91
 投资活动产生的现金流量净额 -2,101,191.67 -464,520.96
 货币资金 五、1 35,312,377.38 12,792,378.82
+存货 五、7 5,565,539.05 4,670,255.21
 流动资产合计 89,265,690.89 71,044,366.54
 流动负债合计 22,322,042.00 21,761,339.74
 资产总计 108,675,298.50 91,739,934.59
@@ -39,4 +40,24 @@ def test_extract_key_figures_parses_liquidity_fields_from_balance_sheet_text():
     assert extracted["current"]["cash_and_equivalents"] == 35312377.38
     assert extracted["current"]["current_assets"] == 89265690.89
     assert extracted["current"]["current_liabilities"] == 22322042.00
+    assert extracted["current"]["inventory"] == 5565539.05
     assert extracted["current"]["net_cash_flow_investing"] == -2101191.67
+
+
+def test_parse_notes_ignores_false_positive_single_digit_amounts():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+五、1 政府补助
+单位：元
+五、2 坏账准备
+单位：元
+五、3 存货跌价准备
+单位：元
+"""
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert "government_subsidies" not in data.notes
+    assert "bad_debt_provision" not in data.notes
+    assert "inventory_provision" not in data.notes
