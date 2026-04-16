@@ -85,6 +85,20 @@ class FinancialStatement:
             quick_assets = self.current_assets - self.inventory
             self.quick_ratio = quick_assets / self.current_liabilities
 
+        # 存货周转率
+        if self.inventory > 0 and self.operating_revenue > 0:
+            self.inventory_turnover = self.operating_revenue / self.inventory
+
+        # 应收账款周转率
+        if self.accounts_receivable > 0 and self.operating_revenue > 0:
+            self.receivables_turnover = (
+                self.operating_revenue / self.accounts_receivable
+            )
+
+        # 总资产周转率
+        if self.total_assets > 0 and self.operating_revenue > 0:
+            self.total_asset_turnover = self.operating_revenue / self.total_assets
+
 
 @dataclass
 class FinancialData:

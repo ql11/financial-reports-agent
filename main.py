@@ -108,7 +108,11 @@ def cmd_batch(args):
     start_time = time.time()
 
     try:
-        reports = analyzer.batch_analyze(valid_files, args.output)
+        reports = analyzer.batch_analyze(
+            valid_files,
+            args.output,
+            report_format=args.format,
+        )
 
         end_time = time.time()
         elapsed_time = end_time - start_time

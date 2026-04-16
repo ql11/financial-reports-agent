@@ -82,12 +82,7 @@ class FinancialFraudAnalyzer:
             financial_data, financial_analysis, risk_assessment, fraud_patterns
         )
         
-        # 6. 保存报告
-        report_path = self.report_generator.save_report(report, "markdown")
-        print(f"   报告已保存: {report_path}")
-        print()
-        
-        # 7. 打印摘要
+        # 6. 打印摘要
         self.report_generator.print_report_summary(report)
         
         return report
@@ -350,12 +345,20 @@ class FinancialFraudAnalyzer:
         
         return anomalies
     
-    def batch_analyze(self, pdf_files: List[str], output_dir: str = "reports") -> List[AnalysisReport]:
+    def batch_analyze(
+        self,
+        pdf_files: List[str],
+        output_dir: str = "reports",
+        report_format: str = "markdown",
+        save_reports: bool = True,
+    ) -> List[AnalysisReport]:
         """批量分析多个财报文件
         
         Args:
             pdf_files: PDF文件路径列表
             output_dir: 输出目录
+            report_format: 报告格式
+            save_reports: 是否保存单个报告
             
         Returns:
             List[AnalysisReport]: 分析报告列表
@@ -368,6 +371,8 @@ class FinancialFraudAnalyzer:
             
             try:
                 report = self.analyze(pdf_file)
+                if save_reports:
+                    self.report_generator.save_report(report, report_format)
                 reports.append(report)
             except Exception as e:
                 print(f"分析文件 {pdf_file} 时出错: {e}")

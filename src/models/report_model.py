@@ -37,7 +37,6 @@ class RiskAssessment:
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        self.calculate_total_score()
         return {
             "total_score": self.total_score,
             "risk_level": self.risk_level.value,
