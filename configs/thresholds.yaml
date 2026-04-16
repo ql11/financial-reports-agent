@@ -86,16 +86,23 @@ fraud_detection:
     profit_growth: 5.0       # 利润增长超过5%
     cash_flow_decline: -20.0 # 现金流下降超过20%
     score: 3.0               # 风险评分
+    cash_flow_negative_score: 2.0  # 经营活动现金流为负评分
   
   # 应收账款异常阈值
   receivables_anomalies:
     growth_exceed_revenue: 10.0  # 应收账款增长率超过收入增长率10个百分点
     score: 2.0                   # 风险评分
+    bad_debt_provision_score: 2.5 # 坏账准备减少评分
   
   # 存货异常阈值
   inventory_anomalies:
     growth_exceed_revenue: 15.0  # 存货增长率超过收入增长率15个百分点
     score: 2.0                   # 风险评分
+    inventory_provision_score: 2.5 # 存货跌价准备减少评分
+
+  subsidy_manipulation:
+    government_subsidies_score: 1.5  # 政府补助异常增长评分
+    deferred_income_score: 2.0       # 递延收益摊销异常评分
   
   # 关联交易阈值
   related_party_transactions:
@@ -161,6 +168,15 @@ fraud_detection:
   auditor_change:
     auditor_change_score: 2.5                 # 审计师变更评分
     audit_fee_abnormal_score: 1.5             # 审计费用异常波动评分
+
+  accounting_changes:
+    accounting_policy_changes_score: 1.0      # 会计政策变更评分
+
+  audit_issues:
+    non_standard_opinion_score: 3.0           # 非标准审计意见评分
+
+  historical_violations:
+    score: 2.5                                # 历史违规评分
 
 # 风险等级阈值
 risk_levels:

@@ -265,3 +265,92 @@ fraud_detection:
     assert estimate_scores["坏账准备计提比例下降"] == 4.5
     assert auditor_scores["审计师变更"] == 4.6
     assert auditor_scores["审计费用异常波动"] == 3.3
+
+
+def test_fraud_detector_uses_config_for_cashflow_provision_and_subsidy_patterns(tmp_path):
+    thresholds_path = tmp_path / "thresholds.yaml"
+    thresholds_path.write_text(
+        """
+fraud_detection:
+  cash_flow_divergence:
+    cash_flow_negative_score: 3.9
+  receivables_anomalies:
+    bad_debt_provision_score: 4.1
+  inventory_anomalies:
+    inventory_provision_score: 4.2
+  subsidy_manipulation:
+    government_subsidies_score: 3.4
+    deferred_income_score: 4.4
+""".strip(),
+        encoding="utf-8",
+    )
+
+    detector = FraudDetector(thresholds_config_path=str(thresholds_path))
+    current = FinancialStatement(
+        operating_revenue=100.0,
+        total_assets=100.0,
+        net_profit=10.0,
+        net_cash_flow_operating=-5.0,
+    )
+    data = build_financial_data(
+        current=current,
+        notes={
+            "bad_debt_provision": "100.00",
+            "inventory_provision": "200.00",
+            "government_subsidies": "300.00",
+            "deferred_income": "400.00",
+        },
+    )
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    cash_flow_pattern = pattern_map["现金流异常模式"]
+    receivables_pattern = pattern_map["应收账款异常模式"]
+    inventory_pattern = pattern_map["存货异常模式"]
+    subsidy_pattern = pattern_map["政府补助操纵模式"]
+
+    assert {i.name: i.score for i in cash_flow_pattern.indicators}["经营活动现金流为负"] == 3.9
+    assert {i.name: i.score for i in receivables_pattern.indicators}["坏账准备减少"] == 4.1
+    assert {i.name: i.score for i in inventory_pattern.indicators}["存货跌价准备减少"] == 4.2
+    subsidy_scores = {i.name: i.score for i in subsidy_pattern.indicators}
+    assert subsidy_scores["政府补助异常增长"] == 3.4
+    assert subsidy_scores["递延收益摊销异常"] == 4.4
+
+
+def test_fraud_detector_uses_config_for_policy_audit_and_history_patterns(tmp_path):
+    thresholds_path = tmp_path / "thresholds.yaml"
+    thresholds_path.write_text(
+        """
+fraud_detection:
+  accounting_changes:
+    accounting_policy_changes_score: 3.1
+  audit_issues:
+    non_standard_opinion_score: 4.8
+  historical_violations:
+    score: 4.6
+""".strip(),
+        encoding="utf-8",
+    )
+
+    detector = FraudDetector(thresholds_config_path=str(thresholds_path))
+    current = FinancialStatement(operating_revenue=100.0, total_assets=100.0, net_profit=10.0)
+    data = build_financial_data(
+        current=current,
+        notes={
+            "accounting_policy_changes": True,
+            "historical_violations": "收到监管警示函",
+        },
+    )
+    data.audit_opinion = "保留意见"
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    accounting_pattern = pattern_map["会计政策变更模式"]
+    audit_pattern = pattern_map["审计问题模式"]
+    history_pattern = pattern_map["历史违规模式"]
+
+    assert accounting_pattern.indicators[0].score == 3.1
+    assert audit_pattern.indicators[0].score == 4.8
+    assert history_pattern.indicators[0].score == 4.6

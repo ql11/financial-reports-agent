@@ -199,6 +199,9 @@ class FraudDetector:
         pattern_score = self._get_threshold(
             "fraud_detection", "cash_flow_divergence", "score", default=3.0
         )
+        cash_flow_negative_score = self._get_threshold(
+            "fraud_detection", "cash_flow_divergence", "cash_flow_negative_score", default=2.0
+        )
         
         # 获取增长率
         profit_growth = financial_data.get_growth_rate("net_profit", 1)
@@ -235,7 +238,7 @@ class FraudDetector:
                 name="经营活动现金流为负",
                 description="经营活动现金流量净额为负，公司可能面临现金流压力",
                 risk_level=RiskLevel.HIGH,
-                score=2.0,
+                score=cash_flow_negative_score,
                 evidence=[
                     f"经营活动现金流: {financial_data.current_year.net_cash_flow_operating:,.0f}元",
                     "经营活动现金流为负，依赖筹资或投资活动维持运营"
@@ -264,6 +267,9 @@ class FraudDetector:
         )
         pattern_score = self._get_threshold(
             "fraud_detection", "receivables_anomalies", "score", default=2.0
+        )
+        bad_debt_provision_score = self._get_threshold(
+            "fraud_detection", "receivables_anomalies", "bad_debt_provision_score", default=2.5
         )
         
         # 获取增长率
@@ -299,7 +305,7 @@ class FraudDetector:
                 name="坏账准备减少",
                 description="应收账款增长但坏账准备减少，可能低估信用风险",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=bad_debt_provision_score,
                 evidence=[
                     "应收账款增长但坏账准备减少",
                     "可能通过减少坏账准备调节利润"
@@ -328,6 +334,9 @@ class FraudDetector:
         )
         pattern_score = self._get_threshold(
             "fraud_detection", "inventory_anomalies", "score", default=2.0
+        )
+        inventory_provision_score = self._get_threshold(
+            "fraud_detection", "inventory_anomalies", "inventory_provision_score", default=2.5
         )
         
         # 获取增长率
@@ -363,7 +372,7 @@ class FraudDetector:
                 name="存货跌价准备减少",
                 description="存货增长但跌价准备减少，可能低估存货减值风险",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=inventory_provision_score,
                 evidence=[
                     "存货增长但跌价准备减少",
                     "可能通过减少跌价准备调节利润"
@@ -387,6 +396,12 @@ class FraudDetector:
     def _detect_subsidy_manipulation(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测政府补助操纵"""
         indicators = []
+        government_subsidies_score = self._get_threshold(
+            "fraud_detection", "subsidy_manipulation", "government_subsidies_score", default=1.5
+        )
+        deferred_income_score = self._get_threshold(
+            "fraud_detection", "subsidy_manipulation", "deferred_income_score", default=2.0
+        )
         
         # 检查附注中的政府补助信息
         if "government_subsidies" in financial_data.notes:
@@ -395,7 +410,7 @@ class FraudDetector:
                 name="政府补助异常增长",
                 description="政府补助大幅增长，可能依赖政府补助维持利润",
                 risk_level=RiskLevel.MEDIUM,
-                score=1.5,
+                score=government_subsidies_score,
                 evidence=[
                     "政府补助大幅增长",
                     "利润可能过度依赖政府补助"
@@ -415,7 +430,7 @@ class FraudDetector:
                 name="递延收益摊销异常",
                 description="递延收益摊销大幅增长，可能通过调节摊销时点操纵利润",
                 risk_level=RiskLevel.HIGH,
-                score=2.0,
+                score=deferred_income_score,
                 evidence=[
                     "递延收益摊销大幅增长",
                     "可能通过调节摊销时点平滑利润"
@@ -525,6 +540,9 @@ class FraudDetector:
     def _detect_accounting_changes(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测会计政策变更"""
         indicators = []
+        accounting_policy_changes_score = self._get_threshold(
+            "fraud_detection", "accounting_changes", "accounting_policy_changes_score", default=1.0
+        )
         
         # 检查附注中的会计政策变更
         if "accounting_policy_changes" in financial_data.notes:
@@ -533,7 +551,7 @@ class FraudDetector:
                 name="会计政策变更",
                 description="报告期内会计政策发生变更，可能影响财务数据可比性",
                 risk_level=RiskLevel.MEDIUM,
-                score=1.0,
+                score=accounting_policy_changes_score,
                 evidence=[
                     "会计政策发生变更",
                     "可能影响财务数据可比性"
@@ -557,6 +575,9 @@ class FraudDetector:
     def _detect_audit_issues(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测审计问题"""
         indicators = []
+        non_standard_opinion_score = self._get_threshold(
+            "fraud_detection", "audit_issues", "non_standard_opinion_score", default=3.0
+        )
         
         # 检查审计意见（排除"标准无保留意见"和"无保留意见"）
         opinion = financial_data.audit_opinion
@@ -567,7 +588,7 @@ class FraudDetector:
                 name="审计意见非标",
                 description=f"审计意见为{financial_data.audit_opinion}，存在审计问题",
                 risk_level=RiskLevel.CRITICAL,
-                score=3.0,
+                score=non_standard_opinion_score,
                 evidence=[
                     f"审计意见: {financial_data.audit_opinion}",
                     "非标准审计意见表明存在重大不确定性"
@@ -591,6 +612,9 @@ class FraudDetector:
     def _detect_historical_violations(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测历史违规"""
         indicators = []
+        pattern_score = self._get_threshold(
+            "fraud_detection", "historical_violations", "score", default=2.5
+        )
         
         # 检查附注中是否有历史违规信息
         if "historical_violations" in financial_data.notes:
@@ -600,7 +624,7 @@ class FraudDetector:
                 name="历史违规记录",
                 description=f"公司有历史违规记录: {violation_info}",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=pattern_score,
                 evidence=[
                     f"历史违规: {violation_info}",
                     "存在历史违规记录，治理风险较高"
