@@ -208,6 +208,25 @@ class RiskAssessor:
         
         risk_assessment.total_score = round(total_score, 1)
         risk_assessment.risk_level = self._determine_risk_level(total_score, max_risk, risk_density)
+        risk_assessment.score_breakdown = {
+            "formula": "总分 = min(模式严重度 + 财务严重度 + 风险密度 + 风险广度 + 风险集中度 + 最高风险加分, 50)",
+            "severity_score": round(severity_score, 1),
+            "financial_severity": round(financial_severity, 1),
+            "density_score": round(density_score, 1),
+            "breadth_score": round(breadth_score, 1),
+            "concentration_score": round(concentration_score, 1),
+            "max_risk_bonus": round(max_risk_bonus, 1),
+            "total_before_cap": round(
+                severity_score
+                + financial_severity
+                + density_score
+                + breadth_score
+                + concentration_score
+                + max_risk_bonus,
+                1,
+            ),
+            "total_score": round(total_score, 1),
+        }
         risk_assessment.key_risks = self._extract_key_risks(fraud_patterns)
         risk_assessment.recommendations = self._generate_recommendations(
             fraud_patterns, financial_data, risk_assessment.risk_level

@@ -103,6 +103,8 @@ fraud_detection:
   subsidy_manipulation:
     government_subsidies_score: 1.5  # 政府补助异常增长评分
     deferred_income_score: 2.0       # 递延收益摊销异常评分
+    government_subsidies_profit_ratio_warning: 0.1  # 政府补助占净利润10%以上才触发
+    deferred_income_profit_ratio_warning: 0.1       # 递延收益占净利润10%以上才触发
   
   # 关联交易阈值
   related_party_transactions:

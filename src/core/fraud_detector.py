@@ -3,6 +3,7 @@
 """
 
 from pathlib import Path
+import re
 from typing import Dict, List, Optional, Any
 from ..models.financial_data import FinancialData
 from ..models.fraud_indicators import FraudIndicator, FraudPattern, FRAUD_INDICATORS, RiskLevel, FraudType
@@ -37,6 +38,73 @@ class FraudDetector:
             if value is None:
                 return default
         return value
+
+    @staticmethod
+    def _parse_note_amount(value: Any) -> Optional[float]:
+        """从附注提取结果中解析金额。"""
+        if isinstance(value, (int, float)):
+            return float(value)
+        if not isinstance(value, str):
+            return None
+
+        match = re.search(r"-?\d[\d,]*(?:\.\d+)?", value.replace("，", ","))
+        if not match:
+            return None
+
+        try:
+            return float(match.group(0).replace(",", ""))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _build_amount_evidence(label: str, amount: Optional[float]) -> List[str]:
+        if amount is None:
+            return []
+        return [f"{label}附注金额: {amount:,.2f}元"]
+
+    @staticmethod
+    def _build_ratio_evidence(label: str, numerator: Optional[float], denominator: float) -> List[str]:
+        if numerator is None or denominator <= 0:
+            return []
+        return [f"{label}: {numerator / denominator * 100:.2f}%"]
+
+    @staticmethod
+    def _calc_ratio(numerator: Optional[float], denominator: float) -> Optional[float]:
+        if numerator is None or denominator <= 0:
+            return None
+        return numerator / denominator
+
+    @staticmethod
+    def _normalize_excerpt(excerpt: str) -> str:
+        return " ".join(excerpt.split())
+
+    def _build_page_evidence(self, financial_data: FinancialData, key: str) -> List[str]:
+        refs = financial_data.evidence_refs.get(key, [])
+        evidence = []
+        for ref in refs:
+            page = ref.get("page")
+            excerpt = self._normalize_excerpt(str(ref.get("excerpt", "")))
+            if page and excerpt:
+                evidence.append(f"原文摘录（第{page}页）: {excerpt}")
+        return evidence
+
+    def _combine_evidence(self, *groups: List[str]) -> List[str]:
+        """合并并去重证据。"""
+        evidence: List[str] = []
+        for group in groups:
+            for item in group:
+                if item and item not in evidence:
+                    evidence.append(item)
+        return evidence
+
+    def _build_statement_evidence(
+        self, financial_data: FinancialData, *fields: str
+    ) -> List[str]:
+        """从主表字段证据中构建可回溯原文。"""
+        evidence: List[str] = []
+        for field in fields:
+            evidence.extend(self._build_page_evidence(financial_data, f"statement:{field}"))
+        return evidence
     
     def detect_fraud_patterns(self, financial_data: FinancialData) -> List[FraudPattern]:
         """检测造假模式
@@ -166,11 +234,15 @@ class FraudDetector:
                 description=f"营业收入下降{abs(revenue_growth):.2f}%，但净利润增长{profit_growth:.2f}%，可能存在利润调节",
                 risk_level=RiskLevel.HIGH,
                 score=pattern_score,
-                evidence=[
-                    f"营业收入增长率: {revenue_growth:.2f}%",
-                    f"净利润增长率: {profit_growth:.2f}%",
-                    "收入下降但利润增长，可能存在非经常性损益调节或费用操纵"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "operating_revenue", "net_profit"
+                    ),
+                    [
+                        f"营业收入增长率: {revenue_growth:.2f}%",
+                        f"净利润增长率: {profit_growth:.2f}%",
+                    ],
+                ),
                 recommendations=[
                     "深入分析利润构成，确认是否依赖非经常性损益",
                     "检查费用确认是否合理，是否存在费用资本化",
@@ -218,11 +290,15 @@ class FraudDetector:
                 description=f"净利润增长{profit_growth:.2f}%，但经营活动现金流下降{abs(cash_flow_growth):.2f}%",
                 risk_level=RiskLevel.HIGH,
                 score=pattern_score,
-                evidence=[
-                    f"净利润增长率: {profit_growth:.2f}%",
-                    f"经营活动现金流增长率: {cash_flow_growth:.2f}%",
-                    "利润增长但现金流大幅下降，可能存在收入虚增或应收账款异常"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "net_profit", "net_cash_flow_operating"
+                    ),
+                    [
+                        f"净利润增长率: {profit_growth:.2f}%",
+                        f"经营活动现金流增长率: {cash_flow_growth:.2f}%",
+                    ],
+                ),
                 recommendations=[
                     "分析应收账款周转率变化",
                     "检查存货周转情况",
@@ -239,10 +315,14 @@ class FraudDetector:
                 description="经营活动现金流量净额为负，公司可能面临现金流压力",
                 risk_level=RiskLevel.HIGH,
                 score=cash_flow_negative_score,
-                evidence=[
-                    f"经营活动现金流: {financial_data.current_year.net_cash_flow_operating:,.0f}元",
-                    "经营活动现金流为负，依赖筹资或投资活动维持运营"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "net_cash_flow_operating"
+                    ),
+                    [
+                        f"经营活动现金流: {financial_data.current_year.net_cash_flow_operating:,.0f}元",
+                    ],
+                ),
                 recommendations=[
                     "分析现金流为负的原因",
                     "评估公司短期偿债能力",
@@ -271,6 +351,9 @@ class FraudDetector:
         bad_debt_provision_score = self._get_threshold(
             "fraud_detection", "receivables_anomalies", "bad_debt_provision_score", default=2.5
         )
+        bad_debt_coverage_warning = self._get_threshold(
+            "fraud_detection", "receivables_anomalies", "bad_debt_coverage_warning", default=0.05
+        )
         
         # 获取增长率
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
@@ -284,11 +367,15 @@ class FraudDetector:
                 description=f"应收账款增长{receivables_growth:.2f}%，超过收入增长{revenue_growth:.2f}%",
                 risk_level=RiskLevel.MEDIUM,
                 score=pattern_score,
-                evidence=[
-                    f"营业收入增长率: {revenue_growth:.2f}%",
-                    f"应收账款增长率: {receivables_growth:.2f}%",
-                    "应收账款增速超过收入增速，可能存在收入虚增或回款问题"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "operating_revenue", "accounts_receivable"
+                    ),
+                    [
+                        f"营业收入增长率: {revenue_growth:.2f}%",
+                        f"应收账款增长率: {receivables_growth:.2f}%",
+                    ],
+                ),
                 recommendations=[
                     "分析应收账款账龄结构",
                     "检查坏账准备计提是否充分",
@@ -296,27 +383,45 @@ class FraudDetector:
                 ]
             )
             indicators.append(indicator)
-        
-        # 检查附注中的坏账准备信息
-        if "bad_debt_provision" in financial_data.notes:
-            # 这里可以根据实际数据判断坏账准备是否减少
-            indicator = FraudIndicator(
-                type=FraudType.RECEIVABLES_MANIPULATION,
-                name="坏账准备减少",
-                description="应收账款增长但坏账准备减少，可能低估信用风险",
-                risk_level=RiskLevel.HIGH,
-                score=bad_debt_provision_score,
-                evidence=[
-                    "应收账款增长但坏账准备减少",
-                    "可能通过减少坏账准备调节利润"
-                ],
-                recommendations=[
-                    "检查坏账准备计提政策是否变更",
-                    "分析应收账款回收风险",
-                    "评估坏账准备计提的充分性"
-                ]
+
+        if (
+            "bad_debt_provision" in financial_data.notes
+            and financial_data.current_year.accounts_receivable > 0
+            and receivables_growth > revenue_growth
+        ):
+            bad_debt_provision = self._parse_note_amount(
+                financial_data.notes["bad_debt_provision"]
             )
-            indicators.append(indicator)
+            coverage_ratio = self._calc_ratio(
+                bad_debt_provision,
+                financial_data.current_year.accounts_receivable,
+            )
+            if (
+                coverage_ratio is not None
+                and coverage_ratio < bad_debt_coverage_warning
+            ):
+                indicator = FraudIndicator(
+                    type=FraudType.PROVISION_UNDERSTATE,
+                    name="坏账准备覆盖不足",
+                    description=(
+                        f"坏账准备覆盖率仅为{coverage_ratio:.2%}，低于{bad_debt_coverage_warning:.0%}警戒线"
+                    ),
+                    risk_level=RiskLevel.HIGH,
+                    score=bad_debt_provision_score,
+                    evidence=self._combine_evidence(
+                        self._build_statement_evidence(financial_data, "accounts_receivable"),
+                        self._build_page_evidence(financial_data, "note:bad_debt_provision"),
+                        [
+                            f"坏账准备覆盖率: {coverage_ratio:.2%}",
+                        ],
+                    ),
+                    recommendations=[
+                        "核查坏账准备计提依据是否充分",
+                        "复核应收账款账龄和回款情况",
+                        "对比同行业坏账准备覆盖水平",
+                    ],
+                )
+                indicators.append(indicator)
         
         if indicators:
             return FraudPattern(
@@ -338,6 +443,9 @@ class FraudDetector:
         inventory_provision_score = self._get_threshold(
             "fraud_detection", "inventory_anomalies", "inventory_provision_score", default=2.5
         )
+        inventory_provision_ratio_warning = self._get_threshold(
+            "fraud_detection", "inventory_anomalies", "inventory_provision_ratio_warning", default=0.03
+        )
         
         # 获取增长率
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
@@ -351,11 +459,15 @@ class FraudDetector:
                 description=f"存货增长{inventory_growth:.2f}%，超过收入增长{revenue_growth:.2f}%",
                 risk_level=RiskLevel.MEDIUM,
                 score=pattern_score,
-                evidence=[
-                    f"营业收入增长率: {revenue_growth:.2f}%",
-                    f"存货增长率: {inventory_growth:.2f}%",
-                    "存货增速超过收入增速，可能存在存货积压或减值风险"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "operating_revenue", "inventory"
+                    ),
+                    [
+                        f"营业收入增长率: {revenue_growth:.2f}%",
+                        f"存货增长率: {inventory_growth:.2f}%",
+                    ],
+                ),
                 recommendations=[
                     "分析存货周转率变化",
                     "检查存货跌价准备计提是否充分",
@@ -363,27 +475,45 @@ class FraudDetector:
                 ]
             )
             indicators.append(indicator)
-        
-        # 检查附注中的存货跌价准备信息
-        if "inventory_provision" in financial_data.notes:
-            # 这里可以根据实际数据判断跌价准备是否减少
-            indicator = FraudIndicator(
-                type=FraudType.INVENTORY_MANIPULATION,
-                name="存货跌价准备减少",
-                description="存货增长但跌价准备减少，可能低估存货减值风险",
-                risk_level=RiskLevel.HIGH,
-                score=inventory_provision_score,
-                evidence=[
-                    "存货增长但跌价准备减少",
-                    "可能通过减少跌价准备调节利润"
-                ],
-                recommendations=[
-                    "检查存货跌价准备计提政策是否变更",
-                    "分析存货市场价值变化",
-                    "评估跌价准备计提的充分性"
-                ]
+
+        if (
+            "inventory_provision" in financial_data.notes
+            and financial_data.current_year.inventory > 0
+            and inventory_growth > revenue_growth
+        ):
+            inventory_provision = self._parse_note_amount(
+                financial_data.notes["inventory_provision"]
             )
-            indicators.append(indicator)
+            coverage_ratio = self._calc_ratio(
+                inventory_provision,
+                financial_data.current_year.inventory,
+            )
+            if (
+                coverage_ratio is not None
+                and coverage_ratio < inventory_provision_ratio_warning
+            ):
+                indicator = FraudIndicator(
+                    type=FraudType.PROVISION_UNDERSTATE,
+                    name="存货跌价准备覆盖不足",
+                    description=(
+                        f"存货跌价准备覆盖率仅为{coverage_ratio:.2%}，低于{inventory_provision_ratio_warning:.0%}警戒线"
+                    ),
+                    risk_level=RiskLevel.HIGH,
+                    score=inventory_provision_score,
+                    evidence=self._combine_evidence(
+                        self._build_statement_evidence(financial_data, "inventory"),
+                        self._build_page_evidence(financial_data, "note:inventory_provision"),
+                        [
+                            f"存货跌价准备覆盖率: {coverage_ratio:.2%}",
+                        ],
+                    ),
+                    recommendations=[
+                        "复核存货跌价准备计提依据",
+                        "检查滞销和减值存货明细",
+                        "对比同行业存货减值覆盖水平",
+                    ],
+                )
+                indicators.append(indicator)
         
         if indicators:
             return FraudPattern(
@@ -402,46 +532,88 @@ class FraudDetector:
         deferred_income_score = self._get_threshold(
             "fraud_detection", "subsidy_manipulation", "deferred_income_score", default=2.0
         )
+        government_subsidies_ratio_warning = self._get_threshold(
+            "fraud_detection",
+            "subsidy_manipulation",
+            "government_subsidies_profit_ratio_warning",
+            default=0.1,
+        )
+        deferred_income_ratio_warning = self._get_threshold(
+            "fraud_detection",
+            "subsidy_manipulation",
+            "deferred_income_profit_ratio_warning",
+            default=0.1,
+        )
         
         # 检查附注中的政府补助信息
         if "government_subsidies" in financial_data.notes:
-            indicator = FraudIndicator(
-                type=FraudType.GOVERNMENT_SUBSIDY,
-                name="政府补助异常增长",
-                description="政府补助大幅增长，可能依赖政府补助维持利润",
-                risk_level=RiskLevel.MEDIUM,
-                score=government_subsidies_score,
-                evidence=[
-                    "政府补助大幅增长",
-                    "利润可能过度依赖政府补助"
-                ],
-                recommendations=[
-                    "分析政府补助的可持续性",
-                    "评估扣除政府补助后的实际盈利能力",
-                    "检查政府补助的会计处理是否合规"
-                ]
+            government_subsidies_amount = self._parse_note_amount(
+                financial_data.notes["government_subsidies"]
             )
-            indicators.append(indicator)
+            government_subsidies_ratio = self._calc_ratio(
+                government_subsidies_amount,
+                abs(financial_data.current_year.net_profit),
+            )
+            if (
+                government_subsidies_ratio is not None
+                and government_subsidies_ratio >= government_subsidies_ratio_warning
+            ):
+                indicator = FraudIndicator(
+                    type=FraudType.GOVERNMENT_SUBSIDY,
+                    name="政府补助异常增长",
+                    description="政府补助占净利润比重偏高，可能依赖补助维持利润",
+                    risk_level=RiskLevel.MEDIUM,
+                    score=government_subsidies_score,
+                    evidence=self._build_page_evidence(
+                        financial_data, "note:government_subsidies"
+                    )
+                    or self._build_amount_evidence("政府补助", government_subsidies_amount)
+                    + self._build_ratio_evidence(
+                        "政府补助/净利润",
+                        government_subsidies_amount,
+                        abs(financial_data.current_year.net_profit),
+                    ),
+                    recommendations=[
+                        "分析政府补助的可持续性",
+                        "评估扣除政府补助后的实际盈利能力",
+                        "检查政府补助的会计处理是否合规"
+                    ]
+                )
+                indicators.append(indicator)
         
         # 检查递延收益摊销
         if "deferred_income" in financial_data.notes:
-            indicator = FraudIndicator(
-                type=FraudType.GOVERNMENT_SUBSIDY,
-                name="递延收益摊销异常",
-                description="递延收益摊销大幅增长，可能通过调节摊销时点操纵利润",
-                risk_level=RiskLevel.HIGH,
-                score=deferred_income_score,
-                evidence=[
-                    "递延收益摊销大幅增长",
-                    "可能通过调节摊销时点平滑利润"
-                ],
-                recommendations=[
-                    "分析递延收益摊销政策",
-                    "检查摊销时点是否合理",
-                    "评估政府补助对利润的实际贡献"
-                ]
+            deferred_income_amount = self._parse_note_amount(
+                financial_data.notes["deferred_income"]
             )
-            indicators.append(indicator)
+            deferred_income_ratio = self._calc_ratio(
+                deferred_income_amount,
+                abs(financial_data.current_year.net_profit),
+            )
+            if (
+                deferred_income_ratio is not None
+                and deferred_income_ratio >= deferred_income_ratio_warning
+            ):
+                indicator = FraudIndicator(
+                    type=FraudType.GOVERNMENT_SUBSIDY,
+                    name="递延收益摊销异常",
+                    description="递延收益占净利润比重偏高，需核实摊销时点对利润的影响",
+                    risk_level=RiskLevel.HIGH,
+                    score=deferred_income_score,
+                    evidence=self._build_page_evidence(financial_data, "note:deferred_income")
+                    or self._build_amount_evidence("递延收益", deferred_income_amount)
+                    + self._build_ratio_evidence(
+                        "递延收益/净利润",
+                        deferred_income_amount,
+                        abs(financial_data.current_year.net_profit),
+                    ),
+                    recommendations=[
+                        "分析递延收益摊销政策",
+                        "检查摊销时点是否合理",
+                        "评估政府补助对利润的实际贡献"
+                    ]
+                )
+                indicators.append(indicator)
         
         if indicators:
             return FraudPattern(
@@ -515,10 +687,10 @@ class FraudDetector:
                         description=f"关联交易占收入比例{percent:.1f}%，可能影响交易公允性",
                         risk_level=RiskLevel.HIGH,
                         score=pattern_score,
-                        evidence=[
-                            f"关联交易比例: {percent:.1f}%",
-                            "关联交易比例过高，可能影响财务数据真实性"
-                        ],
+                        evidence=self._build_page_evidence(
+                            financial_data, "note:related_party_transactions"
+                        )
+                        or [f"关联交易比例: {percent:.1f}%"],
                         recommendations=[
                             "分析关联交易定价是否公允",
                             "评估关联交易的必要性",
@@ -579,9 +751,16 @@ class FraudDetector:
             "fraud_detection", "audit_issues", "non_standard_opinion_score", default=3.0
         )
         
-        # 检查审计意见（排除"标准无保留意见"和"无保留意见"）
+        # 检查审计意见
         opinion = financial_data.audit_opinion
-        is_non_standard = ("保留" in opinion and "无保留" not in opinion) or "否定" in opinion or "无法表示" in opinion or "非标准" in opinion
+        is_non_standard = (
+            ("保留" in opinion and "无保留" not in opinion)
+            or "否定" in opinion
+            or "无法表示" in opinion
+            or "非标准" in opinion
+            or "持续经营" in opinion
+            or "重大不确定性" in opinion
+        )
         if is_non_standard:
             indicator = FraudIndicator(
                 type=FraudType.AUDIT_ISSUE,
@@ -589,10 +768,8 @@ class FraudDetector:
                 description=f"审计意见为{financial_data.audit_opinion}，存在审计问题",
                 risk_level=RiskLevel.CRITICAL,
                 score=non_standard_opinion_score,
-                evidence=[
-                    f"审计意见: {financial_data.audit_opinion}",
-                    "非标准审计意见表明存在重大不确定性"
-                ],
+                evidence=self._build_page_evidence(financial_data, "audit:opinion")
+                or [f"审计意见: {financial_data.audit_opinion}"],
                 recommendations=[
                     "仔细阅读审计报告说明段",
                     "分析导致非标意见的原因",
@@ -996,12 +1173,12 @@ class FraudDetector:
                     description=f"经营现金流/净利润={cash_profit_ratio:.2f}，远低于1，利润质量极差",
                     risk_level=RiskLevel.HIGH,
                     score=cash_profit_ratio_score,
-                    evidence=[
-                        f"经营现金流: {current.net_cash_flow_operating:,.0f}",
-                        f"净利润: {current.net_profit:,.0f}",
-                        f"经营现金流/净利润: {cash_profit_ratio:.2f}",
-                        "比率<0.5意味着每1元利润中现金贡献不足0.5元"
-                    ],
+                    evidence=self._combine_evidence(
+                        self._build_statement_evidence(
+                            financial_data, "net_cash_flow_operating", "net_profit"
+                        ),
+                        [f"经营现金流/净利润: {cash_profit_ratio:.2f}"],
+                    ),
                     recommendations=[
                         "分析利润与现金流背离的具体原因",
                         "检查应收账款和存货变化",
@@ -1016,11 +1193,12 @@ class FraudDetector:
                 description="净利润为正但经营活动现金流为负，典型造假信号",
                 risk_level=RiskLevel.CRITICAL,
                 score=profit_positive_cash_negative_score,
-                evidence=[
-                    f"净利润: {current.net_profit:,.0f}",
-                    f"经营现金流: {current.net_cash_flow_operating:,.0f}",
-                    "净利润为正但经营现金流为负，收入可能虚构"
-                ],
+                evidence=self._combine_evidence(
+                    self._build_statement_evidence(
+                        financial_data, "net_profit", "net_cash_flow_operating"
+                    ),
+                    [],
+                ),
                 recommendations=[
                     "深入核查收入确认的真实性",
                     "分析应收账款回收情况",
@@ -1087,13 +1265,15 @@ class FraudDetector:
                     description=f"自由现金流为{free_cash_flow:,.0f}，但净利润为{current.net_profit:,.0f}",
                     risk_level=RiskLevel.HIGH,
                     score=free_cash_flow_score,
-                    evidence=[
-                        f"经营现金流: {current.net_cash_flow_operating:,.0f}",
-                        f"资本支出(近似): {capital_expenditure:,.0f}",
-                        f"自由现金流: {free_cash_flow:,.0f}",
-                        f"净利润: {current.net_profit:,.0f}",
-                        "自由现金流为负意味着公司无法从经营中产生足够现金覆盖投资"
-                    ],
+                    evidence=self._combine_evidence(
+                        self._build_statement_evidence(
+                            financial_data,
+                            "net_cash_flow_operating",
+                            "net_cash_flow_investing",
+                            "net_profit",
+                        ),
+                        [f"自由现金流: {free_cash_flow:,.0f}"],
+                    ),
                     recommendations=[
                         "分析资本支出的必要性和回报",
                         "评估公司长期现金流可持续性",

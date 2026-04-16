@@ -176,6 +176,51 @@ def test_parse_notes_extracts_amounts_from_nearby_sections_only():
     assert data.notes["inventory_provision"] == "234,567.89元"
 
 
+def test_parse_notes_records_page_number_for_extracted_note_evidence():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+封面
+政府补助
+其他收益
+其中政府补助金额为345,678.90元。
+"""
+    extractor.page_texts = [
+        "封面",
+        "政府补助\n其他收益\n其中政府补助金额为345,678.90元。",
+    ]
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert data.notes["government_subsidies"] == "345,678.90元"
+    assert data.evidence_refs["note:government_subsidies"] == [
+        {
+            "page": 2,
+            "excerpt": "政府补助\n其中政府补助金额为345,678.90元。",
+        }
+    ]
+
+
+def test_parse_notes_records_contextual_excerpt_for_table_amounts():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+坏账准备
+项目 期初余额 本期增加 本期减少 期末余额
+合计 5,382,636.67 1,250.00 5,381,386.67
+"""
+    extractor.page_texts = [
+        "坏账准备\n项目 期初余额 本期增加 本期减少 期末余额\n合计 5,382,636.67 1,250.00 5,381,386.67"
+    ]
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    excerpt = data.evidence_refs["note:bad_debt_provision"][0]["excerpt"]
+    assert "坏账准备" in excerpt
+    assert "项目 期初余额 本期增加 本期减少 期末余额" in excerpt
+    assert "合计 5,382,636.67 1,250.00 5,381,386.67" in excerpt
+
+
 def test_parse_notes_skips_directory_style_related_party_percentages():
     extractor = PDFDataExtractor()
     extractor.text_content = """
@@ -183,6 +228,20 @@ def test_parse_notes_skips_directory_style_related_party_percentages():
 关联交易情况................................100%
 
 报告期内不存在需要披露的重大关联交易。
+"""
+    data = FinancialData()
+
+    extractor._parse_notes(data)
+
+    assert "related_party_transactions" not in data.notes
+
+
+def test_parse_notes_does_not_treat_shareholding_ratio_as_related_party_transaction():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+七、关联方及关联交易
+（一）本企业的母公司情况
+本企业无母公司，控股股东和实际控制人是周世巍，持股比例为58.9%。
 """
     data = FinancialData()
 
@@ -276,3 +335,69 @@ def test_parse_notes_extracts_estimate_changes_and_deferred_income_when_present(
 
     assert data.notes["accounting_estimate_changes"] == "固定资产折旧年限由5年变更为8年。"
     assert data.notes["deferred_income"] == "1,234,567.90"
+
+
+def test_parse_company_info_preserves_going_concern_unqualified_opinion_and_records_evidence():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+重庆瑞法科技股份有限公司
+我们提醒财务报表使用者关注，如财务报表附注二、（二）所述，瑞法科技公司持续经营能力存在重大不确定性。
+我们出具了带与持续经营相关的重大不确定性段落的无保留意见。
+"""
+    extractor.page_texts = [
+        "重庆瑞法科技股份有限公司\n我们提醒财务报表使用者关注，如财务报表附注二、（二）所述，瑞法科技公司持续经营能力存在重大不确定性。\n我们出具了带与持续经营相关的重大不确定性段落的无保留意见。"
+    ]
+    data = FinancialData()
+
+    extractor._parse_company_info(data)
+
+    assert data.audit_opinion == "带持续经营重大不确定性段落的无保留意见"
+    assert data.evidence_refs["audit:opinion"] == [
+        {
+            "page": 1,
+            "excerpt": "我们出具了带与持续经营相关的重大不确定性段落的无保留意见。",
+        }
+    ]
+
+
+def test_parse_financial_statements_records_statement_evidence_refs():
+    extractor = PDFDataExtractor()
+    extractor.text_content = """
+营业收入 111,366,098.57 118,199,226.51
+五、净利润（净亏损以“－”号填列） 62,360.44 -1,052,619.66
+经营活动产生的现金流量净额 20,469,639.54 21,684,371.91
+存货 附注五、7 5,565,539.05 4,670,255.21
+应收账款 附注五、3 28,945,017.84 30,582,101.06
+资产总计 108,675,298.50 91,739,934.59
+负债合计 22,322,042.00 21,761,339.74
+归属于挂牌公司股东的净资产 84,964,993.51 69,812,894.60
+"""
+    extractor.page_texts = [extractor.text_content.strip()]
+    data = FinancialData(report_year=2025)
+
+    extractor._parse_financial_statements(data)
+
+    assert data.evidence_refs["statement:operating_revenue"] == [
+        {
+            "page": 1,
+            "excerpt": "营业收入 111,366,098.57 118,199,226.51",
+            "current_value": 111366098.57,
+            "previous_value": 118199226.51,
+        }
+    ]
+    assert data.evidence_refs["statement:net_profit"] == [
+        {
+            "page": 1,
+            "excerpt": "五、净利润（净亏损以“－”号填列） 62,360.44 -1,052,619.66",
+            "current_value": 62360.44,
+            "previous_value": -1052619.66,
+        }
+    ]
+    assert data.evidence_refs["statement:net_cash_flow_operating"] == [
+        {
+            "page": 1,
+            "excerpt": "经营活动产生的现金流量净额 20,469,639.54 21,684,371.91",
+            "current_value": 20469639.54,
+            "previous_value": 21684371.91,
+        }
+    ]

@@ -306,16 +306,69 @@ fraud_detection:
     pattern_map = {pattern.name: pattern for pattern in patterns}
 
     cash_flow_pattern = pattern_map["现金流异常模式"]
-    receivables_pattern = pattern_map["应收账款异常模式"]
-    inventory_pattern = pattern_map["存货异常模式"]
     subsidy_pattern = pattern_map["政府补助操纵模式"]
 
     assert {i.name: i.score for i in cash_flow_pattern.indicators}["经营活动现金流为负"] == 3.9
-    assert {i.name: i.score for i in receivables_pattern.indicators}["坏账准备减少"] == 4.1
-    assert {i.name: i.score for i in inventory_pattern.indicators}["存货跌价准备减少"] == 4.2
+    assert "应收账款异常模式" not in pattern_map
+    assert "存货异常模式" not in pattern_map
     subsidy_scores = {i.name: i.score for i in subsidy_pattern.indicators}
     assert subsidy_scores["政府补助异常增长"] == 3.4
     assert subsidy_scores["递延收益摊销异常"] == 4.4
+
+
+def test_fraud_detector_does_not_create_provision_risk_from_note_presence_alone():
+    detector = FraudDetector()
+    current = FinancialStatement(
+        operating_revenue=1000.0,
+        total_assets=1500.0,
+        net_profit=200.0,
+        accounts_receivable=400.0,
+        inventory=500.0,
+    )
+    data = build_financial_data(
+        current=current,
+        notes={
+            "bad_debt_provision": "100.00",
+            "inventory_provision": "200.00",
+            "government_subsidies": "300.00",
+            "deferred_income": "400.00",
+        },
+    )
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+    assert "应收账款异常模式" not in pattern_map
+    assert "存货异常模式" not in pattern_map
+    subsidy_evidence = {
+        indicator.name: indicator.evidence
+        for indicator in pattern_map["政府补助操纵模式"].indicators
+    }
+    assert subsidy_evidence["政府补助异常增长"] == [
+        "政府补助附注金额: 300.00元",
+        "政府补助/净利润: 150.00%",
+    ]
+    assert subsidy_evidence["递延收益摊销异常"] == [
+        "递延收益附注金额: 400.00元",
+        "递延收益/净利润: 200.00%",
+    ]
+
+
+def test_fraud_detector_does_not_flag_immaterial_government_subsidy():
+    detector = FraudDetector()
+    current = FinancialStatement(
+        operating_revenue=1000.0,
+        total_assets=1500.0,
+        net_profit=62000.0,
+    )
+    data = build_financial_data(
+        current=current,
+        notes={"government_subsidies": "330.24"},
+    )
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_names = {pattern.name for pattern in patterns}
+
+    assert "政府补助操纵模式" not in pattern_names
 
 
 def test_fraud_detector_uses_config_for_policy_audit_and_history_patterns(tmp_path):
@@ -354,3 +407,30 @@ fraud_detection:
     assert accounting_pattern.indicators[0].score == 3.1
     assert audit_pattern.indicators[0].score == 4.8
     assert history_pattern.indicators[0].score == 4.6
+
+
+def test_fraud_detector_flags_going_concern_unqualified_opinion_with_page_evidence():
+    detector = FraudDetector()
+    current = FinancialStatement(
+        operating_revenue=100.0,
+        total_assets=100.0,
+        total_liabilities=20.0,
+        net_profit=10.0,
+    )
+    data = build_financial_data(current=current)
+    data.audit_opinion = "带持续经营重大不确定性段落的无保留意见"
+    data.evidence_refs["audit:opinion"] = [
+        {
+            "page": 12,
+            "excerpt": "我们出具了带与持续经营相关的重大不确定性段落的无保留意见。",
+        }
+    ]
+
+    patterns = detector.detect_fraud_patterns(data)
+    pattern_map = {pattern.name: pattern for pattern in patterns}
+
+    audit_pattern = pattern_map["审计问题模式"]
+    assert audit_pattern.indicators[0].name == "审计意见非标"
+    assert audit_pattern.indicators[0].evidence == [
+        "原文摘录（第12页）: 我们出具了带与持续经营相关的重大不确定性段落的无保留意见。"
+    ]

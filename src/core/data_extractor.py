@@ -22,6 +22,7 @@ class PDFDataExtractor:
     
     def __init__(self):
         self.text_content = ""
+        self.page_texts = []
         self.tables = []
         self.logger = get_logger(__name__)
         
@@ -66,10 +67,14 @@ class PDFDataExtractor:
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 self.text_content = ""
+                self.page_texts = []
                 for page in pdf.pages:
                     text = page.extract_text()
                     if text:
+                        self.page_texts.append(text)
                         self.text_content += text + "\n"
+                    else:
+                        self.page_texts.append("")
                 
                 self.logger.info("成功提取文本，共 %s 页", len(pdf.pages))
                 
@@ -82,6 +87,7 @@ class PDFDataExtractor:
         except Exception as e:
             self.logger.exception("PDF文本提取错误: %s", e)
             self.text_content = ""
+            self.page_texts = []
             self.tables = []
     
     def _parse_number(self, s: str) -> Optional[float]:
@@ -174,15 +180,17 @@ class PDFDataExtractor:
         )
         return not any(token in line for token in invalid_tokens)
 
-    def _find_statement_amounts(self, lines: List[str], labels: List[str]) -> Optional[List[float]]:
-        """按标签优先级从可信报表行中提取 1-2 个金额。"""
+    def _find_statement_amounts(
+        self, lines: List[str], labels: List[str]
+    ) -> Optional[tuple[List[float], str]]:
+        """按标签优先级从可信报表行中提取 1-2 个金额，并返回来源行。"""
         for label in labels:
             for line in lines:
                 if not self._line_matches_statement_label(line, label):
                     continue
                 values = self._extract_amounts_from_line(line)
                 if 1 <= len(values) <= 2:
-                    return values
+                    return values, line
         return None
 
     def _assign_from_statement_lines(
@@ -193,20 +201,95 @@ class PDFDataExtractor:
         labels: List[str],
     ) -> bool:
         """使用报表正文行覆盖字段；若只有当年值，则清理旧的上年污染值。"""
-        values = self._find_statement_amounts(lines, labels)
-        if not values:
+        matched = self._find_statement_amounts(lines, labels)
+        if not matched:
             return False
+        values, source_line = matched
 
         result['current'][field] = values[0]
         if len(values) > 1:
             result['previous'][field] = values[1]
         else:
             result['previous'].pop(field, None)
+        result.setdefault("evidence", {})[field] = {
+            "excerpt": source_line,
+            "current_value": values[0],
+            "previous_value": values[1] if len(values) > 1 else None,
+        }
         return True
 
     def _note_lines(self) -> List[str]:
         """按行切分附注文本，便于做就近匹配。"""
         return [line.strip() for line in self.text_content.splitlines() if line.strip()]
+
+    def _find_page_for_excerpt(self, excerpt: str) -> Optional[int]:
+        """根据原文摘录定位页码。"""
+        normalized_excerpt = excerpt.strip()
+        if not normalized_excerpt:
+            return None
+        for page_number, page_text in enumerate(self.page_texts, start=1):
+            if normalized_excerpt in page_text:
+                return page_number
+            excerpt_lines = [line.strip() for line in normalized_excerpt.splitlines() if line.strip()]
+            if excerpt_lines and all(line in page_text for line in excerpt_lines):
+                return page_number
+        return None
+
+    def _record_evidence_ref(
+        self,
+        financial_data: FinancialData,
+        key: str,
+        excerpt: str,
+        **metadata: Any,
+    ) -> None:
+        """记录证据原文与页码，支持同一字段保留多条证据。"""
+        page = self._find_page_for_excerpt(excerpt)
+        if page is None:
+            return
+
+        ref: Dict[str, Any] = {"page": page, "excerpt": excerpt}
+        for meta_key, meta_value in metadata.items():
+            if meta_value is not None:
+                ref[meta_key] = meta_value
+
+        refs = financial_data.evidence_refs.setdefault(key, [])
+        if ref not in refs:
+            refs.append(ref)
+
+    def _find_page_line(self, keywords: List[str]) -> Optional[str]:
+        """在分页文本中查找包含关键字的原文行。"""
+        for page_text in self.page_texts:
+            for raw_line in page_text.splitlines():
+                line = raw_line.strip()
+                if line and all(keyword in line for keyword in keywords):
+                    return line
+        return None
+
+    def _build_context_excerpt(
+        self, section_lines: List[str], keyword: str, candidate_line: str
+    ) -> str:
+        """为命中的金额行补充标题和表头，避免只剩数字。"""
+        parts: List[str] = []
+
+        keyword_line = next((line for line in section_lines if keyword in line), None)
+        if keyword_line:
+            parts.append(keyword_line)
+
+        header_line = next(
+            (
+                line
+                for line in section_lines
+                if "项目" in line and any(token in line for token in ("期初余额", "期末余额", "本期"))
+            ),
+            None,
+        )
+        if header_line and header_line not in parts:
+            parts.append(header_line)
+
+        if candidate_line not in parts:
+            parts.append(candidate_line)
+
+        return "\n".join(parts)
 
     def _is_directory_like_line(self, line: str) -> bool:
         """过滤目录页、点线页码等明显噪声行。"""
@@ -269,6 +352,57 @@ class PDFDataExtractor:
 
         return None
 
+    def _extract_note_amount_with_source(
+        self,
+        keyword: str,
+        stop_keywords: List[str],
+        context_keywords: Optional[List[str]] = None,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """在关键词附近提取金额，并返回来源原文行。"""
+        amount_pattern = re.compile(
+            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)(?:[亿万]?元)?)'
+        )
+        context_keywords = context_keywords or []
+        lines = self._note_lines()
+        candidate_indexes = [
+            (self._note_keyword_priority(line, keyword), index)
+            for index, line in enumerate(lines)
+            if keyword in line and not self._is_directory_like_line(line)
+        ]
+
+        for _, index in sorted(candidate_indexes):
+            line = lines[index]
+
+            section_lines = [line]
+            for next_line in lines[index + 1:index + 10]:
+                if any(stop_keyword in next_line for stop_keyword in stop_keywords):
+                    break
+                section_lines.append(next_line)
+
+            for candidate_line in section_lines:
+                if keyword in candidate_line:
+                    keyword_suffix = candidate_line.split(keyword, 1)[1]
+                    numeric_match = amount_pattern.search(keyword_suffix)
+                    if numeric_match:
+                        if (
+                            "元" in numeric_match.group(1)
+                            or "合计" in candidate_line
+                            or any(token in candidate_line for token in context_keywords)
+                        ):
+                            return numeric_match.group(1), self._build_context_excerpt(
+                                section_lines, keyword, candidate_line
+                            )
+
+            for candidate_line in section_lines:
+                if "合计" in candidate_line:
+                    numeric_matches = amount_pattern.findall(candidate_line)
+                    if numeric_matches:
+                        return numeric_matches[-1], self._build_context_excerpt(
+                            section_lines, keyword, candidate_line
+                        )
+
+        return None, None
+
     def _extract_change_note(self, keyword: str) -> Optional[str]:
         """提取会计政策/估计变更说明，显式跳过“未发生变更/不适用”场景。"""
         none_keywords = ("未发生变更", "无主要", "无重要", "不适用", "未变更")
@@ -328,11 +462,43 @@ class PDFDataExtractor:
 
         return None
 
+    def _extract_table_total_after_header_with_source(
+        self, keyword: str, max_scan_lines: int = 8
+    ) -> tuple[Optional[str], Optional[str]]:
+        """从表格型附注中提取金额，并返回来源原文行。"""
+        amount_pattern = re.compile(
+            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)(?:[亿万]?元)?)'
+        )
+        lines = self._note_lines()
+
+        for index, line in enumerate(lines):
+            if line.strip() != keyword:
+                continue
+
+            table_lines = lines[index + 1:index + 1 + max_scan_lines]
+            if not any(
+                "项目" in candidate_line and any(token in candidate_line for token in ("期初余额", "期末余额", "本期"))
+                for candidate_line in table_lines
+            ):
+                continue
+
+            for candidate_line in table_lines:
+                if "合计" not in candidate_line:
+                    continue
+                numeric_matches = amount_pattern.findall(candidate_line)
+                if numeric_matches:
+                    context_excerpt = self._build_context_excerpt(
+                        [line, *table_lines], keyword, candidate_line
+                    )
+                    return numeric_matches[-1], context_excerpt
+
+        return None, None
+
     def _extract_related_party_percentage(self) -> Optional[str]:
         """提取真实的关联交易占比，跳过目录页码等噪声。"""
         percentage_pattern = re.compile(r'(\d+\.?\d*%)')
-        context_keywords = ("占", "占比", "比例", "采购", "销售", "收入", "金额")
-        invalid_context = ("目录", "不存在", "无重大")
+        context_keywords = ("采购", "销售", "收入", "交易金额", "交易发生额", "占同类交易", "占年度")
+        invalid_context = ("目录", "不存在", "无重大", "母公司", "控股股东", "实际控制人", "持股比例")
         lines = self._note_lines()
 
         for index, line in enumerate(lines):
@@ -351,6 +517,30 @@ class PDFDataExtractor:
                 return percentage_match.group(1)
 
         return None
+
+    def _extract_related_party_percentage_with_source(self) -> tuple[Optional[str], Optional[str]]:
+        """提取真实的关联交易占比及其来源原文。"""
+        percentage_pattern = re.compile(r'(\d+\.?\d*%)')
+        context_keywords = ("采购", "销售", "收入", "交易金额", "交易发生额", "占同类交易", "占年度")
+        invalid_context = ("目录", "不存在", "无重大", "母公司", "控股股东", "实际控制人", "持股比例")
+        lines = self._note_lines()
+
+        for index, line in enumerate(lines):
+            if "关联交易" not in line:
+                continue
+
+            window_lines = lines[index:index + 3]
+            window_text = "\n".join(window_lines)
+            if self._is_directory_like_line(line):
+                continue
+            if any(token in window_text for token in invalid_context):
+                continue
+
+            percentage_match = percentage_pattern.search(window_text)
+            if percentage_match and any(token in window_text for token in context_keywords):
+                return percentage_match.group(1), window_text
+
+        return None, None
     
     def _parse_company_info(self, financial_data: FinancialData):
         """解析公司信息"""
@@ -392,14 +582,55 @@ class PDFDataExtractor:
                 financial_data.report_year = int(match.group(1))
         
         # 审计意见
-        if '标准无保留意见' in text or '无保留意见' in text:
+        if (
+            "持续经营相关的重大不确定性段落的无保留意见" in text
+            or "带与持续经营相关的重大不确定性段落的无保留意见" in text
+            or "与持续经营相关的重大不确定性" in text
+        ):
+            financial_data.audit_opinion = "带持续经营重大不确定性段落的无保留意见"
+            audit_excerpt = self._find_page_line(["持续经营", "无保留意见"])
+            if audit_excerpt:
+                self._record_evidence_ref(
+                    financial_data,
+                    "audit:opinion",
+                    audit_excerpt,
+                )
+        elif '标准无保留意见' in text or '无保留意见' in text:
             financial_data.audit_opinion = "标准无保留意见"
+            audit_excerpt = self._find_page_line(["无保留意见"])
+            if audit_excerpt:
+                self._record_evidence_ref(
+                    financial_data,
+                    "audit:opinion",
+                    audit_excerpt,
+                )
         elif '保留意见' in text:
             financial_data.audit_opinion = "保留意见"
+            audit_excerpt = self._find_page_line(["保留意见"])
+            if audit_excerpt:
+                self._record_evidence_ref(
+                    financial_data,
+                    "audit:opinion",
+                    audit_excerpt,
+                )
         elif '否定意见' in text:
             financial_data.audit_opinion = "否定意见"
+            audit_excerpt = self._find_page_line(["否定意见"])
+            if audit_excerpt:
+                self._record_evidence_ref(
+                    financial_data,
+                    "audit:opinion",
+                    audit_excerpt,
+                )
         elif '无法表示意见' in text:
             financial_data.audit_opinion = "无法表示意见"
+            audit_excerpt = self._find_page_line(["无法表示意见"])
+            if audit_excerpt:
+                self._record_evidence_ref(
+                    financial_data,
+                    "audit:opinion",
+                    audit_excerpt,
+                )
         
         # 会计师事务所
         match = re.search(r'([\u4e00-\u9fa5]+会计师事务所)', text)
@@ -746,6 +977,7 @@ class PDFDataExtractor:
         """用提取的数据填充FinancialData"""
         current = extracted.get('current', {})
         previous = extracted.get('previous', {})
+        evidence = extracted.get("evidence", {})
         
         # 当前年度
         stmt = financial_data.current_year
@@ -764,6 +996,15 @@ class PDFDataExtractor:
         # 计算总资产（如果缺失但有权益和负债）
         if stmt.total_assets == 0 and stmt.total_equity > 0 and stmt.total_liabilities > 0:
             stmt.total_assets = stmt.total_equity + stmt.total_liabilities
+
+        for field, ref in evidence.items():
+            self._record_evidence_ref(
+                financial_data,
+                f"statement:{field}",
+                ref["excerpt"],
+                current_value=ref.get("current_value"),
+                previous_value=ref.get("previous_value"),
+            )
         
         # 历史年度
         if previous:
@@ -805,9 +1046,15 @@ class PDFDataExtractor:
         }
         stop_keywords = [config["keyword"] for config in note_keywords.values()]
 
-        related_party_transactions = self._extract_related_party_percentage()
+        related_party_transactions, related_party_excerpt = (
+            self._extract_related_party_percentage_with_source()
+        )
         if related_party_transactions:
             financial_data.notes["related_party_transactions"] = related_party_transactions
+            if related_party_excerpt:
+                self._record_evidence_ref(
+                    financial_data, "note:related_party_transactions", related_party_excerpt
+                )
 
         policy_change = self._extract_change_note("会计政策变更")
         if policy_change:
@@ -817,15 +1064,23 @@ class PDFDataExtractor:
         if estimate_change:
             financial_data.notes["accounting_estimate_changes"] = estimate_change
 
-        deferred_income = self._extract_table_total_after_header("递延收益")
+        deferred_income, deferred_income_excerpt = self._extract_table_total_after_header_with_source(
+            "递延收益"
+        )
         if deferred_income:
             financial_data.notes["deferred_income"] = deferred_income
+            if deferred_income_excerpt:
+                self._record_evidence_ref(
+                    financial_data, "note:deferred_income", deferred_income_excerpt
+                )
 
         for key, config in note_keywords.items():
-            value = self._extract_note_amount(
+            value, excerpt = self._extract_note_amount_with_source(
                 config["keyword"],
                 stop_keywords=[item for item in stop_keywords if item != config["keyword"]],
                 context_keywords=config["context_keywords"],
             )
             if value:
                 financial_data.notes[key] = value
+                if excerpt:
+                    self._record_evidence_ref(financial_data, f"note:{key}", excerpt)

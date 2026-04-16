@@ -119,6 +119,9 @@ class FinancialData:
     
     # 附注数据
     notes: Dict[str, Any] = field(default_factory=dict)
+
+    # 可回溯证据引用
+    evidence_refs: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     
     # 行业数据
     industry_benchmarks: Dict[str, float] = field(default_factory=dict)
