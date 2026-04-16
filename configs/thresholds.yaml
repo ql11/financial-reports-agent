@@ -105,12 +105,15 @@ fraud_detection:
   # 收入质量阈值
   cash_revenue_ratio:
     warning: 0.8                # 销售收现比低于80%预警
+    score: 2.5                  # 风险评分
 
   receivable_ratio:
     warning: 0.5                # 应收账款占收入比高于50%预警
+    score: 2.5                  # 风险评分
 
   cash_profit_ratio:
     warning: 0.5                # 经营现金流/净利润低于0.5预警
+    score: 3.0                  # 风险评分
 
   receivables_growth_vs_revenue:
     spread: 10.0                # 应收增速超过收入增速10个百分点

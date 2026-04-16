@@ -27,7 +27,7 @@ class FinancialFraudAnalyzer:
         weights_config_path: Optional[str] = None,
     ):
         self.data_extractor = PDFDataExtractor()
-        self.fraud_detector = FraudDetector()
+        self.fraud_detector = FraudDetector(thresholds_config_path=thresholds_config_path)
         self.thresholds = self._load_thresholds(thresholds_config_path)
         self.risk_assessor = RiskAssessor(weights_config_path=weights_config_path)
         self.report_generator = ReportGenerator(output_dir)

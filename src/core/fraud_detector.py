@@ -2,16 +2,41 @@
 造假检测器
 """
 
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from ..models.financial_data import FinancialData
 from ..models.fraud_indicators import FraudIndicator, FraudPattern, FRAUD_INDICATORS, RiskLevel, FraudType
+from ..utils.file_utils import load_yaml
 
 
 class FraudDetector:
     """财报造假检测器"""
     
-    def __init__(self):
+    def __init__(self, thresholds_config_path: Optional[str] = None):
         self.indicators = FRAUD_INDICATORS.copy()
+        self.thresholds = self._load_thresholds(thresholds_config_path)
+
+    def _load_thresholds(self, thresholds_config_path: Optional[str]) -> Dict[str, Any]:
+        """加载检测阈值配置。"""
+        config_path = thresholds_config_path
+        if config_path is None:
+            config_path = str(
+                Path(__file__).resolve().parents[2] / "configs" / "thresholds.yaml"
+            )
+
+        thresholds = load_yaml(config_path)
+        return thresholds or {}
+
+    def _get_threshold(self, *path: str, default: Any) -> Any:
+        """读取分层阈值配置。"""
+        value: Any = self.thresholds
+        for key in path:
+            if not isinstance(value, dict):
+                return default
+            value = value.get(key)
+            if value is None:
+                return default
+        return value
     
     def detect_fraud_patterns(self, financial_data: FinancialData) -> List[FraudPattern]:
         """检测造假模式
@@ -119,19 +144,28 @@ class FraudDetector:
     def _detect_revenue_profit_divergence(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测收入利润背离"""
         indicators = []
+        revenue_decline_threshold = self._get_threshold(
+            "fraud_detection", "revenue_profit_divergence", "revenue_decline", default=0.0
+        )
+        profit_growth_threshold = self._get_threshold(
+            "fraud_detection", "revenue_profit_divergence", "profit_growth", default=0.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "revenue_profit_divergence", "score", default=2.5
+        )
         
         # 获取增长率
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
         profit_growth = financial_data.get_growth_rate("net_profit", 1)
         
         # 收入下降但利润增长
-        if revenue_growth < 0 and profit_growth > 0:
+        if revenue_growth < revenue_decline_threshold and profit_growth > profit_growth_threshold:
             indicator = FraudIndicator(
                 type=FraudType.REVENUE_MANIPULATION,
                 name="收入利润背离",
                 description=f"营业收入下降{abs(revenue_growth):.2f}%，但净利润增长{profit_growth:.2f}%，可能存在利润调节",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=pattern_score,
                 evidence=[
                     f"营业收入增长率: {revenue_growth:.2f}%",
                     f"净利润增长率: {profit_growth:.2f}%",
@@ -156,19 +190,31 @@ class FraudDetector:
     def _detect_cash_flow_divergence(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测现金流背离"""
         indicators = []
+        profit_growth_threshold = self._get_threshold(
+            "fraud_detection", "cash_flow_divergence", "profit_growth", default=0.0
+        )
+        cash_flow_decline_threshold = self._get_threshold(
+            "fraud_detection", "cash_flow_divergence", "cash_flow_decline", default=-20.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "cash_flow_divergence", "score", default=3.0
+        )
         
         # 获取增长率
         profit_growth = financial_data.get_growth_rate("net_profit", 1)
         cash_flow_growth = financial_data.get_growth_rate("net_cash_flow_operating", 1)
         
         # 利润增长但现金流下降
-        if profit_growth > 0 and cash_flow_growth < -20:  # 现金流下降超过20%
+        if (
+            profit_growth > profit_growth_threshold
+            and cash_flow_growth < cash_flow_decline_threshold
+        ):
             indicator = FraudIndicator(
                 type=FraudType.CASH_FLOW_MANIPULATION,
                 name="现金流利润背离",
                 description=f"净利润增长{profit_growth:.2f}%，但经营活动现金流下降{abs(cash_flow_growth):.2f}%",
                 risk_level=RiskLevel.HIGH,
-                score=3.0,
+                score=pattern_score,
                 evidence=[
                     f"净利润增长率: {profit_growth:.2f}%",
                     f"经营活动现金流增长率: {cash_flow_growth:.2f}%",
@@ -213,19 +259,25 @@ class FraudDetector:
     def _detect_receivables_anomalies(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测应收账款异常"""
         indicators = []
+        growth_exceed_revenue = self._get_threshold(
+            "fraud_detection", "receivables_anomalies", "growth_exceed_revenue", default=10.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "receivables_anomalies", "score", default=2.0
+        )
         
         # 获取增长率
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
         receivables_growth = financial_data.get_growth_rate("accounts_receivable", 1)
         
         # 应收账款增长率超过收入增长率
-        if receivables_growth > revenue_growth + 10:  # 超过10个百分点
+        if receivables_growth > revenue_growth + growth_exceed_revenue:
             indicator = FraudIndicator(
                 type=FraudType.RECEIVABLES_MANIPULATION,
                 name="应收账款异常增长",
                 description=f"应收账款增长{receivables_growth:.2f}%，超过收入增长{revenue_growth:.2f}%",
                 risk_level=RiskLevel.MEDIUM,
-                score=2.0,
+                score=pattern_score,
                 evidence=[
                     f"营业收入增长率: {revenue_growth:.2f}%",
                     f"应收账款增长率: {receivables_growth:.2f}%",
@@ -271,19 +323,25 @@ class FraudDetector:
     def _detect_inventory_anomalies(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测存货异常"""
         indicators = []
+        growth_exceed_revenue = self._get_threshold(
+            "fraud_detection", "inventory_anomalies", "growth_exceed_revenue", default=15.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "inventory_anomalies", "score", default=2.0
+        )
         
         # 获取增长率
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
         inventory_growth = financial_data.get_growth_rate("inventory", 1)
         
         # 存货增长率超过收入增长率
-        if inventory_growth > revenue_growth + 15:  # 超过15个百分点
+        if inventory_growth > revenue_growth + growth_exceed_revenue:
             indicator = FraudIndicator(
                 type=FraudType.INVENTORY_MANIPULATION,
                 name="存货异常增长",
                 description=f"存货增长{inventory_growth:.2f}%，超过收入增长{revenue_growth:.2f}%",
                 risk_level=RiskLevel.MEDIUM,
-                score=2.0,
+                score=pattern_score,
                 evidence=[
                     f"营业收入增长率: {revenue_growth:.2f}%",
                     f"存货增长率: {inventory_growth:.2f}%",
@@ -416,6 +474,12 @@ class FraudDetector:
     def _detect_related_party_issues(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测关联交易问题"""
         indicators = []
+        percentage_threshold = self._get_threshold(
+            "fraud_detection", "related_party_transactions", "percentage_threshold", default=20.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "related_party_transactions", "score", default=2.0
+        )
         
         # 检查附注中的关联交易信息
         if "related_party_transactions" in financial_data.notes:
@@ -423,13 +487,13 @@ class FraudDetector:
             # 尝试解析百分比
             try:
                 percent = float(transaction_percent.strip('%'))
-                if percent > 20:  # 关联交易超过20%
+                if percent > percentage_threshold:
                     indicator = FraudIndicator(
                         type=FraudType.RELATED_PARTY_TRANSACTION,
                         name="关联交易比例过高",
                         description=f"关联交易占收入比例{percent:.1f}%，可能影响交易公允性",
                         risk_level=RiskLevel.HIGH,
-                        score=2.0,
+                        score=pattern_score,
                         evidence=[
                             f"关联交易比例: {percent:.1f}%",
                             "关联交易比例过高，可能影响财务数据真实性"
@@ -561,21 +625,33 @@ class FraudDetector:
         """
         indicators = []
         current = financial_data.current_year
+        cash_revenue_threshold = self._get_threshold(
+            "fraud_detection", "cash_revenue_ratio", "warning", default=0.8
+        )
+        cash_revenue_score = self._get_threshold(
+            "fraud_detection", "cash_revenue_ratio", "score", default=2.5
+        )
+        receivable_ratio_threshold = self._get_threshold(
+            "fraud_detection", "receivable_ratio", "warning", default=0.5
+        )
+        receivable_ratio_score = self._get_threshold(
+            "fraud_detection", "receivable_ratio", "score", default=2.5
+        )
         
         # 现金收入比 = 销售商品收到的现金 / 营业收入
         if current.operating_revenue > 0 and hasattr(current, 'cash_from_sales') and current.cash_from_sales > 0:
             cash_revenue_ratio = current.cash_from_sales / current.operating_revenue
-            if cash_revenue_ratio < 0.8:
+            if cash_revenue_ratio < cash_revenue_threshold:
                 indicator = FraudIndicator(
                     type=FraudType.FICTITIOUS_REVENUE,
                     name="现金收入比过低",
-                    description=f"现金收入比为{cash_revenue_ratio:.1%}，低于80%警戒线，收入质量差",
+                    description=f"现金收入比为{cash_revenue_ratio:.1%}，低于{cash_revenue_threshold:.0%}警戒线，收入质量差",
                     risk_level=RiskLevel.HIGH,
-                    score=2.5,
+                    score=cash_revenue_score,
                     evidence=[
                         f"销售商品收到的现金: {current.cash_from_sales:,.0f}",
                         f"营业收入: {current.operating_revenue:,.0f}",
-                        f"现金收入比: {cash_revenue_ratio:.1%}（警戒线80%）",
+                        f"现金收入比: {cash_revenue_ratio:.1%}（警戒线{cash_revenue_threshold:.0%}）",
                         "现金收入比低意味着收入中未收回现金部分占比高，可能虚构销售"
                     ],
                     recommendations=[
@@ -589,13 +665,13 @@ class FraudDetector:
         # 应收账款占收入比
         if current.operating_revenue > 0 and current.accounts_receivable > 0:
             receivable_ratio = current.accounts_receivable / current.operating_revenue
-            if receivable_ratio > 0.5:
+            if receivable_ratio > receivable_ratio_threshold:
                 indicator = FraudIndicator(
                     type=FraudType.FICTITIOUS_REVENUE,
                     name="应收账款占收入比过高",
-                    description=f"应收账款占收入比为{receivable_ratio:.1%}，超过50%警戒线",
+                    description=f"应收账款占收入比为{receivable_ratio:.1%}，超过{receivable_ratio_threshold:.0%}警戒线",
                     risk_level=RiskLevel.HIGH,
-                    score=2.5,
+                    score=receivable_ratio_score,
                     evidence=[
                         f"应收账款: {current.accounts_receivable:,.0f}",
                         f"营业收入: {current.operating_revenue:,.0f}",
