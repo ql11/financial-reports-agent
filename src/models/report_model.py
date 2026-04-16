@@ -182,6 +182,45 @@ class AnalysisReport:
             if key in breakdown:
                 markdown_parts.append(f"- {label}: {breakdown[key]:.1f}")
         markdown_parts.append("")
+
+    def _append_signal_status(self, markdown_parts: List[str]):
+        """渲染信号状态分层。"""
+        if not self.detailed_analysis:
+            return
+
+        summary = self.detailed_analysis.get("signal_status_summary")
+        if not summary:
+            return
+
+        markdown_parts.append("### 信号状态")
+
+        confirmed = summary.get("confirmed_anomalies", [])
+        if confirmed:
+            markdown_parts.append("#### 明确异常")
+            for item in confirmed:
+                risk_level = item.get("risk_level", "")
+                suffix = f"（{risk_level}）" if risk_level else ""
+                markdown_parts.append(
+                    f"- {item.get('name', '')}{suffix}: {item.get('description', '')}"
+                )
+
+        weak_signals = summary.get("weak_signals", [])
+        if weak_signals:
+            markdown_parts.append("#### 弱信号")
+            for item in weak_signals:
+                markdown_parts.append(
+                    f"- {item.get('name', '')}: {item.get('description', '')}"
+                )
+
+        missing_data = summary.get("missing_data", [])
+        if missing_data:
+            markdown_parts.append("#### 缺失数据")
+            for item in missing_data:
+                markdown_parts.append(
+                    f"- {item.get('name', '')}: {item.get('description', '')}"
+                )
+
+        markdown_parts.append("")
     
     def to_markdown(self) -> str:
         """转换为Markdown格式"""
@@ -269,6 +308,7 @@ class AnalysisReport:
         markdown_parts.append(f"**风险评分**: {self.risk_assessment.total_score:.1f}/50")
         markdown_parts.append("")
         self._append_score_formula(markdown_parts)
+        self._append_signal_status(markdown_parts)
         
         # 造假模式
         if self.risk_assessment.fraud_patterns:

@@ -247,7 +247,11 @@ class ReportGenerator:
             if hasattr(current, 'total_equity') and current.total_equity > 0:
                 equity_diff = abs(implied_equity - current.total_equity)
                 cross_statement_checks["资产-负债=权益校验"] = "通过" if equity_diff / current.total_assets < 0.05 else f"异常（差异{equity_diff:,.0f}）"
-        
+
+        signal_status_summary = self._build_signal_status_summary(
+            financial_data, financial_analysis, fraud_patterns
+        )
+
         detailed_analysis = {
             "company_overview": {
                 "name": financial_data.company_name,
@@ -269,11 +273,94 @@ class ReportGenerator:
             "industry_comparison": financial_analysis.industry_comparisons,
             "fraud_patterns": [pattern.to_dict() for pattern in fraud_patterns],
             "anomalies": financial_analysis.anomalies,
+            "signal_status_summary": signal_status_summary,
             "notes": financial_data.notes,
             "evidence_refs": financial_data.evidence_refs,
         }
         
         return detailed_analysis
+
+    def _build_signal_status_summary(
+        self,
+        financial_data: FinancialData,
+        financial_analysis: FinancialAnalysis,
+        fraud_patterns: List[FraudPattern],
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """按输出层区分明确异常、弱信号和缺失数据。"""
+        confirmed_anomalies: List[Dict[str, str]] = []
+        for pattern in fraud_patterns:
+            for indicator in pattern.indicators:
+                confirmed_anomalies.append(
+                    {
+                        "name": f"{pattern.name} / {indicator.name}",
+                        "risk_level": indicator.risk_level.value,
+                        "description": indicator.description,
+                    }
+                )
+
+        weak_signals: List[Dict[str, str]] = []
+        for anomaly in financial_analysis.anomalies:
+            weak_signals.append(
+                {
+                    "name": str(anomaly.get("metric", "")),
+                    "severity": str(anomaly.get("severity", "")),
+                    "description": str(anomaly.get("description", "")),
+                }
+            )
+
+        missing_data = self._build_missing_data_signals(financial_data)
+
+        return {
+            "confirmed_anomalies": confirmed_anomalies,
+            "weak_signals": weak_signals,
+            "missing_data": missing_data,
+        }
+
+    def _build_missing_data_signals(
+        self, financial_data: FinancialData
+    ) -> List[Dict[str, str]]:
+        """标记会削弱分析结论的关键字段缺口。"""
+        checks = [
+            (
+                "cash_from_sales",
+                "statement:cash_from_sales",
+                "销售商品收到的现金",
+                "未提取到字段或页码证据，现金收入比判断可能不完整。",
+            ),
+            (
+                "cash_and_equivalents",
+                "statement:cash_and_equivalents",
+                "货币资金",
+                "未提取到字段或页码证据，流动性与现金真实性判断会变弱。",
+            ),
+            (
+                "current_assets",
+                "statement:current_assets",
+                "流动资产合计",
+                "未提取到字段或页码证据，短期偿债能力判断可能不完整。",
+            ),
+            (
+                "current_liabilities",
+                "statement:current_liabilities",
+                "流动负债合计",
+                "未提取到字段或页码证据，短期偿债能力判断可能不完整。",
+            ),
+            (
+                "net_cash_flow_investing",
+                "statement:net_cash_flow_investing",
+                "投资活动现金流量净额",
+                "未提取到字段或页码证据，自由现金流判断会变弱。",
+            ),
+        ]
+
+        missing_data: List[Dict[str, str]] = []
+        current = financial_data.current_year
+        for field, evidence_key, label, description in checks:
+            value = getattr(current, field, 0.0)
+            if value == 0 and not financial_data.evidence_refs.get(evidence_key):
+                missing_data.append({"name": label, "description": description})
+
+        return missing_data
     
     def save_report(self, report: AnalysisReport, format: str = "markdown") -> str:
         """保存报告到文件
