@@ -115,6 +115,14 @@ class PDFDataExtractor:
         match = re.search(r'股票代码[：:]\s*([0-9]{6})', text)
         if match:
             financial_data.stock_code = match.group(1)
+        if not financial_data.stock_code:
+            match = re.search(r'证券代码\s*([0-9]{6})', text)
+            if match:
+                financial_data.stock_code = match.group(1)
+        if not financial_data.stock_code:
+            match = re.search(r'NEEQ\s*[:：]\s*([0-9]{6})', text, re.IGNORECASE)
+            if match:
+                financial_data.stock_code = match.group(1)
         
         # 报告年度
         match = re.search(r'(\d{4})\s*年\s*12\s*月\s*\d{1,2}\s*日', text)
@@ -252,7 +260,59 @@ class PDFDataExtractor:
         if sales_cash_match:
             result['current']['cash_from_sales'] = self._parse_number(sales_cash_match.group(1))
             result['previous']['cash_from_sales'] = self._parse_number(sales_cash_match.group(2))
-        
+
+        # === 投资活动现金流 ===
+        investing_cash_match = re.search(
+            r'投资活动产生的现金流量净额\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+            text
+        )
+        if investing_cash_match:
+            result['current']['net_cash_flow_investing'] = self._parse_number(
+                investing_cash_match.group(1)
+            )
+            result['previous']['net_cash_flow_investing'] = self._parse_number(
+                investing_cash_match.group(2)
+            )
+
+        # === 货币资金 ===
+        cash_match = re.search(
+            r'货币资金(?:\s+[^\s]+)?\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+            text
+        )
+        if cash_match:
+            result['current']['cash_and_equivalents'] = self._parse_number(
+                cash_match.group(1)
+            )
+            result['previous']['cash_and_equivalents'] = self._parse_number(
+                cash_match.group(2)
+            )
+
+        # === 流动资产合计 ===
+        current_assets_match = re.search(
+            r'流动资产合计\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+            text
+        )
+        if current_assets_match:
+            result['current']['current_assets'] = self._parse_number(
+                current_assets_match.group(1)
+            )
+            result['previous']['current_assets'] = self._parse_number(
+                current_assets_match.group(2)
+            )
+
+        # === 流动负债合计 ===
+        current_liabilities_match = re.search(
+            r'流动负债合计\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+            text
+        )
+        if current_liabilities_match:
+            result['current']['current_liabilities'] = self._parse_number(
+                current_liabilities_match.group(1)
+            )
+            result['previous']['current_liabilities'] = self._parse_number(
+                current_liabilities_match.group(2)
+            )
+
         # === 负债合计 ===
         debt_match = re.search(
             r'负债合计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text

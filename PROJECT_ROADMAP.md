@@ -19,6 +19,7 @@ Update it whenever one of the following happens:
 - Restored consistency between runtime risk scoring and serialized risk scoring.
 - Added turnover ratio calculation for fields already used by downstream rules.
 - Made batch analysis honor the requested output format.
+- Expanded extractor coverage for sample-report stock code and key liquidity fields.
 - Added regression tests for the repaired behaviors.
 
 ### Current risks still open
