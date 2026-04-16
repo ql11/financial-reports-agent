@@ -227,6 +227,22 @@ class AnalysisReport:
                 markdown_parts.append(f"{pattern.description}")
                 markdown_parts.append(f"**风险等级**: {pattern.risk_level.value}")
                 markdown_parts.append(f"**风险评分**: {pattern.total_score:.1f}")
+                if pattern.indicators:
+                    markdown_parts.append("##### 风险信号")
+                    for indicator in pattern.indicators:
+                        markdown_parts.append(f"###### {indicator.name}")
+                        markdown_parts.append(f"- 风险等级: {indicator.risk_level.value}")
+                        markdown_parts.append(f"- 风险评分: {indicator.score:.1f}")
+                        markdown_parts.append(f"- 指标说明: {indicator.description}")
+                        if indicator.evidence:
+                            markdown_parts.append("###### 证据片段")
+                            for evidence in indicator.evidence:
+                                markdown_parts.append(f"- {evidence}")
+                        if indicator.recommendations:
+                            markdown_parts.append("###### 建议动作")
+                            for recommendation in indicator.recommendations:
+                                markdown_parts.append(f"- {recommendation}")
+                        markdown_parts.append("")
                 markdown_parts.append("")
         
         # 关键风险
