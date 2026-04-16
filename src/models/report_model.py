@@ -161,26 +161,29 @@ class AnalysisReport:
         if not breakdown:
             return
 
-        markdown_parts.append("### 风险评分计算式")
-        formula = breakdown.get(
-            "formula",
-            "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)",
-        )
-        markdown_parts.append(formula)
-
-        labels = [
-            ("severity_score", "模式严重度"),
-            ("financial_severity", "财务严重度"),
-            ("density_score", "风险密度"),
-            ("breadth_score", "风险广度"),
-            ("concentration_score", "风险集中度"),
-            ("max_risk_bonus", "最高风险加分"),
-            ("total_before_cap", "封顶前总分"),
-            ("total_score", "最终总分"),
+        markdown_parts.append("### 风险评分分项")
+        parts = [
+            ("模式严重度", breakdown.get("severity_score")),
+            ("财务严重度", breakdown.get("financial_severity")),
+            ("密度", breakdown.get("density_score")),
+            ("广度", breakdown.get("breadth_score")),
+            ("集中度", breakdown.get("concentration_score")),
+            ("最高风险加分", breakdown.get("max_risk_bonus")),
         ]
-        for key, label in labels:
-            if key in breakdown:
-                markdown_parts.append(f"- {label}: {breakdown[key]:.1f}")
+        score_line = " + ".join(
+            f"{label} {value:.1f}" for label, value in parts if isinstance(value, (int, float))
+        )
+        total_before_cap = breakdown.get("total_before_cap")
+        total_score = breakdown.get("total_score")
+        if isinstance(total_before_cap, (int, float)):
+            score_line = f"{score_line} = {total_before_cap:.1f}"
+        if (
+            isinstance(total_score, (int, float))
+            and isinstance(total_before_cap, (int, float))
+            and round(total_score, 1) != round(total_before_cap, 1)
+        ):
+            score_line = f"{score_line}（报告显示 {total_score:.1f}/50）"
+        markdown_parts.append(score_line)
         markdown_parts.append("")
 
     def _append_signal_status(self, markdown_parts: List[str]):

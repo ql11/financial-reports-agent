@@ -104,9 +104,12 @@ def test_analysis_report_markdown_includes_paged_evidence_and_score_formula():
     assert "营业收入同比增长 35.2%" not in markdown
     assert "原文摘录（第12页）" in markdown
     assert "原文摘录（第47页）" in markdown
-    assert "### 风险评分计算式" in markdown
-    assert "总分=min(模式严重度+财务严重度+密度+广度+集中度+最高风险加分,50)" in markdown
-    assert "- 模式严重度: 9.0" in markdown
+    assert "### 风险评分分项" in markdown
+    assert (
+        "模式严重度 9.0 + 财务严重度 4.0 + 密度 3.0 + 广度 1.5 + 集中度 2.5 + 最高风险加分 1.0 = 21.0"
+        in markdown
+    )
+    assert "总分=min(" not in markdown
 
 
 def test_report_generator_marks_low_risk_report_as_pending_review_when_key_evidence_missing(
