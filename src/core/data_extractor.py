@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Any
 import pdfplumber
 
 from ..models.financial_data import FinancialData, FinancialStatement
+from ..utils.logging_utils import get_logger
 
 
 class DataExtractionError(Exception):
@@ -22,6 +23,7 @@ class PDFDataExtractor:
     def __init__(self):
         self.text_content = ""
         self.tables = []
+        self.logger = get_logger(__name__)
         
     def extract_from_pdf(self, pdf_path: str) -> FinancialData:
         """从PDF提取财务数据
@@ -69,7 +71,7 @@ class PDFDataExtractor:
                     if text:
                         self.text_content += text + "\n"
                 
-                print(f"成功提取文本，共 {len(pdf.pages)} 页")
+                self.logger.info("成功提取文本，共 %s 页", len(pdf.pages))
                 
                 self.tables = []
                 for page in pdf.pages:
@@ -78,7 +80,7 @@ class PDFDataExtractor:
                         self.tables.extend(tables)
                         
         except Exception as e:
-            print(f"PDF文本提取错误: {e}")
+            self.logger.exception("PDF文本提取错误: %s", e)
             self.text_content = ""
             self.tables = []
     
@@ -257,7 +259,7 @@ class PDFDataExtractor:
                 f"请确认PDF为标准格式年报，或手动提供公司名称和报告年度"
             )
         
-        print(f"   从PDF中提取到财务数据")
+        self.logger.info("从PDF中提取到财务数据")
         self._fill_financial_data(financial_data, extracted)
     
     def _extract_key_figures(self, text: str, current_year: int) -> Dict[str, Any]:
@@ -357,6 +359,19 @@ class PDFDataExtractor:
                 investing_cash_match.group(2)
             )
 
+        # === 筹资活动现金流 ===
+        financing_cash_match = re.search(
+            r'筹资活动产生的现金流量净额\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+            text
+        )
+        if financing_cash_match:
+            result['current']['net_cash_flow_financing'] = self._parse_number(
+                financing_cash_match.group(1)
+            )
+            result['previous']['net_cash_flow_financing'] = self._parse_number(
+                financing_cash_match.group(2)
+            )
+
         # === 货币资金 ===
         cash_match = re.search(
             r'货币资金(?:\s+[^\s]+)?\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
@@ -403,11 +418,20 @@ class PDFDataExtractor:
         if debt_match:
             result['current']['total_liabilities'] = self._parse_number(debt_match.group(1))
             result['previous']['total_liabilities'] = self._parse_number(debt_match.group(2))
+        else:
+            debt_match = re.search(r'负债总计\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
+            if debt_match:
+                result['current']['total_liabilities'] = self._parse_number(debt_match.group(1))
+                result['previous']['total_liabilities'] = self._parse_number(debt_match.group(2))
         
         # === 资产总计 ===
         asset_match = re.search(r'资产总计\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text)
         if not asset_match:
             asset_match = re.search(r'资产总额\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*\s+(-?[\d,]+\.?\d*)\s+-?[\d,]+\.?\d*', text)
+        if not asset_match:
+            asset_match = re.search(r'资产总计\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
+        if not asset_match:
+            asset_match = re.search(r'资产总额\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
         if asset_match:
             result['current']['total_assets'] = self._parse_number(asset_match.group(1))
             result['previous']['total_assets'] = self._parse_number(asset_match.group(2))
@@ -419,6 +443,14 @@ class PDFDataExtractor:
         if equity_match:
             result['current']['total_equity'] = self._parse_number(equity_match.group(1))
             result['previous']['total_equity'] = self._parse_number(equity_match.group(2))
+        else:
+            equity_match = re.search(
+                r'归属于挂牌公司股东的净资产\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+                text
+            )
+            if equity_match:
+                result['current']['total_equity'] = self._parse_number(equity_match.group(1))
+                result['previous']['total_equity'] = self._parse_number(equity_match.group(2))
         
         # === 存货 ===
         inv_match = re.search(r'存货账面余额\s+(-?[\d,]+\.?\d*)\s*元', text)
@@ -451,6 +483,14 @@ class PDFDataExtractor:
         )
         if ar_match:
             result['current']['accounts_receivable'] = self._parse_number(ar_match.group(1))
+        else:
+            ar_match = re.search(
+                r'应收账款(?:\s+[^\s]+)?\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)',
+                text
+            )
+            if ar_match:
+                result['current']['accounts_receivable'] = self._parse_number(ar_match.group(1))
+                result['previous']['accounts_receivable'] = self._parse_number(ar_match.group(2))
         
         # === 非经常性损益 ===
         nri_match = re.search(r'非经常性损益\s+(-?[\d,]+\.?\d*)\s+(-?[\d,]+\.?\d*)', text)
@@ -524,9 +564,9 @@ class PDFDataExtractor:
                     prev_stmt.total_assets = prev_stmt.total_equity + prev_stmt.total_liabilities
                 financial_data.historical_data[financial_data.report_year - 1] = prev_stmt
             else:
-                print(f"   注意：未提取到上年度数据，趋势分析将不可用")
+                self.logger.warning("未提取到上年度数据，趋势分析将不可用")
         else:
-            print(f"   注意：未提取到上年度数据，趋势分析将不可用")
+            self.logger.warning("未提取到上年度数据，趋势分析将不可用")
     
     def _parse_notes(self, financial_data: FinancialData):
         """解析附注信息"""

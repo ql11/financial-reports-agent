@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Any
 from ..models.financial_data import FinancialData
 from ..models.report_model import AnalysisReport, FinancialAnalysis, RiskAssessment
 from ..models.fraud_indicators import FraudPattern
+from ..utils.logging_utils import get_logger
 
 
 class ReportGenerator:
@@ -17,6 +18,7 @@ class ReportGenerator:
     def __init__(self, output_dir: str = "outputs"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        self.logger = get_logger(__name__)
     
     def generate_report(self, financial_data: FinancialData, 
                        financial_analysis: FinancialAnalysis,
@@ -208,26 +210,20 @@ class ReportGenerator:
     
     def print_report_summary(self, report: AnalysisReport):
         """打印报告摘要"""
-        print("=" * 80)
-        print(f"财报分析报告摘要")
-        print("=" * 80)
-        print(f"公司名称: {report.company_name}")
-        print(f"股票代码: {report.stock_code}")
-        print(f"报告年度: {report.report_year}")
-        print(f"分析日期: {report.analysis_date}")
-        print(f"报告ID: {report.report_id}")
-        print()
-        
-        print(f"风险评估: {report.risk_assessment.risk_level.value}风险")
-        print(f"风险评分: {report.risk_assessment.total_score:.1f}/50")
-        print(f"造假模式数量: {len(report.risk_assessment.fraud_patterns)}")
-        print()
-        
-        print("关键发现:")
+        self.logger.info("%s", "=" * 80)
+        self.logger.info("财报分析报告摘要")
+        self.logger.info("%s", "=" * 80)
+        self.logger.info("公司名称: %s", report.company_name)
+        self.logger.info("股票代码: %s", report.stock_code)
+        self.logger.info("报告年度: %s", report.report_year)
+        self.logger.info("分析日期: %s", report.analysis_date)
+        self.logger.info("报告ID: %s", report.report_id)
+        self.logger.info("风险评估: %s风险", report.risk_assessment.risk_level.value)
+        self.logger.info("风险评分: %.1f/50", report.risk_assessment.total_score)
+        self.logger.info("造假模式数量: %s", len(report.risk_assessment.fraud_patterns))
+        self.logger.info("关键发现:")
         for i, finding in enumerate(report.key_findings[:5], 1):
-            print(f"  {i}. {finding}")
-        print()
-        
-        print("投资建议:")
-        print(f"  {report.investment_recommendation}")
-        print("=" * 80)
+            self.logger.info("  %s. %s", i, finding)
+        self.logger.info("投资建议:")
+        self.logger.info("  %s", report.investment_recommendation)
+        self.logger.info("%s", "=" * 80)

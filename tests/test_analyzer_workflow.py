@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import logging
 
 from src.core.analyzer import FinancialFraudAnalyzer
 from src.core.risk_assessor import RiskAssessor
@@ -245,3 +246,17 @@ score_caps:
 
     assert assessment.total_score == 18.0
     assert assessment.risk_level == RiskLevel.LOW
+
+
+def test_analyze_logs_progress_instead_of_printing(tmp_path, caplog, capsys):
+    analyzer = build_analyzer(tmp_path)
+
+    with caplog.at_level(logging.INFO):
+        analyzer.analyze("dummy.pdf")
+
+    stdout = capsys.readouterr().out
+
+    assert stdout == ""
+    assert "开始财报造假分析" in caplog.text
+    assert "提取财务数据" in caplog.text
+    assert "生成分析报告" in caplog.text

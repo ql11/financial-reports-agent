@@ -2,7 +2,6 @@
 财报造假分析器 - 主分析器
 """
 
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -15,6 +14,7 @@ from .fraud_detector import FraudDetector
 from .risk_assessor import RiskAssessor
 from .report_generator import ReportGenerator
 from ..utils.file_utils import load_yaml
+from ..utils.logging_utils import get_logger
 
 
 class FinancialFraudAnalyzer:
@@ -31,6 +31,7 @@ class FinancialFraudAnalyzer:
         self.thresholds = self._load_thresholds(thresholds_config_path)
         self.risk_assessor = RiskAssessor(weights_config_path=weights_config_path)
         self.report_generator = ReportGenerator(output_dir)
+        self.logger = get_logger(__name__)
 
     def _load_thresholds(self, thresholds_config_path: Optional[str]) -> Dict[str, Any]:
         """加载阈值配置，缺失时回退到运行时代码默认值。"""
@@ -69,12 +70,12 @@ class FinancialFraudAnalyzer:
         Returns:
             AnalysisReport: 分析报告
         """
-        print("=" * 80)
-        print("开始财报造假分析")
-        print("=" * 80)
+        self.logger.info("%s", "=" * 80)
+        self.logger.info("开始财报造假分析")
+        self.logger.info("%s", "=" * 80)
         
         # 1. 提取财务数据
-        print("1. 提取财务数据...")
+        self.logger.info("1. 提取财务数据...")
         financial_data = self.data_extractor.extract_from_pdf(pdf_path)
         
         # 更新公司名称和报告年度（如果提供）
@@ -83,34 +84,31 @@ class FinancialFraudAnalyzer:
         if report_year:
             financial_data.report_year = report_year
         
-        print(f"   公司: {financial_data.company_name}")
-        print(f"   年度: {financial_data.report_year}")
-        print(f"   审计师: {financial_data.auditor}")
-        print(f"   审计意见: {financial_data.audit_opinion}")
-        print()
+        self.logger.info("   公司: %s", financial_data.company_name)
+        self.logger.info("   年度: %s", financial_data.report_year)
+        self.logger.info("   审计师: %s", financial_data.auditor)
+        self.logger.info("   审计意见: %s", financial_data.audit_opinion)
         
         # 2. 进行财务分析
-        print("2. 进行财务分析...")
+        self.logger.info("2. 进行财务分析...")
         financial_analysis = self._analyze_financials(financial_data)
         
         # 3. 检测造假模式
-        print("3. 检测造假模式...")
+        self.logger.info("3. 检测造假模式...")
         fraud_patterns = self.fraud_detector.detect_fraud_patterns(financial_data)
-        print(f"   检测到 {len(fraud_patterns)} 个造假模式")
+        self.logger.info("   检测到 %s 个造假模式", len(fraud_patterns))
         for pattern in fraud_patterns:
             pattern.calculate_score()
-            print(f"   - {pattern.name}: {pattern.risk_level.value}风险")
-        print()
+            self.logger.info("   - %s: %s风险", pattern.name, pattern.risk_level.value)
         
         # 4. 评估风险
-        print("4. 评估风险...")
+        self.logger.info("4. 评估风险...")
         risk_assessment = self.risk_assessor.assess_risk(fraud_patterns, financial_data)
-        print(f"   风险评分: {risk_assessment.total_score:.1f}/50")
-        print(f"   风险等级: {risk_assessment.risk_level.value}")
-        print()
+        self.logger.info("   风险评分: %.1f/50", risk_assessment.total_score)
+        self.logger.info("   风险等级: %s", risk_assessment.risk_level.value)
         
         # 5. 生成报告
-        print("5. 生成分析报告...")
+        self.logger.info("5. 生成分析报告...")
         report = self.report_generator.generate_report(
             financial_data, financial_analysis, risk_assessment, fraud_patterns
         )
@@ -444,8 +442,8 @@ class FinancialFraudAnalyzer:
         reports = []
         
         for i, pdf_file in enumerate(pdf_files, 1):
-            print(f"\n分析文件 {i}/{len(pdf_files)}: {Path(pdf_file).name}")
-            print("-" * 60)
+            self.logger.info("分析文件 %s/%s: %s", i, len(pdf_files), Path(pdf_file).name)
+            self.logger.info("%s", "-" * 60)
             
             try:
                 report = self.analyze(pdf_file)
@@ -453,7 +451,7 @@ class FinancialFraudAnalyzer:
                     self.report_generator.save_report(report, report_format)
                 reports.append(report)
             except Exception as e:
-                print(f"分析文件 {pdf_file} 时出错: {e}")
+                self.logger.exception("分析文件 %s 时出错: %s", pdf_file, e)
                 continue
         
         # 生成批量分析摘要
@@ -504,4 +502,4 @@ class FinancialFraudAnalyzer:
             else:
                 f.write("未发现高风险公司。\n")
         
-        print(f"\n批量分析摘要已保存: {summary_path}")
+        self.logger.info("批量分析摘要已保存: %s", summary_path)

@@ -6,9 +6,9 @@ import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
-import logging
+from .logging_utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def ensure_directory(directory: str) -> Path:

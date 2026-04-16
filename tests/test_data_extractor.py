@@ -44,6 +44,32 @@ def test_extract_key_figures_parses_liquidity_fields_from_balance_sheet_text():
     assert extracted["current"]["net_cash_flow_investing"] == -2101191.67
 
 
+def test_extract_key_figures_parses_balance_sheet_and_financing_fields_from_two_column_text():
+    extractor = PDFDataExtractor()
+    text = """
+营业收入 111,366,098.57 118,199,226.51
+归属于母公司所有者的净利润 12,477,098.91 20,041,463.26
+筹资活动产生的现金流量净额 490,000.00 -13,505,337.77
+应收账款 五、3 28,945,017.84 30,582,101.06
+资产总计 108,675,298.50 91,739,934.59
+负债总计 22,322,042.00 21,761,339.74
+归属于挂牌公司股东的净资产 84,964,993.51 69,812,894.60
+"""
+
+    extracted = extractor._extract_key_figures(text, 2025)
+
+    assert extracted["current"]["net_cash_flow_financing"] == 490000.00
+    assert extracted["previous"]["net_cash_flow_financing"] == -13505337.77
+    assert extracted["current"]["accounts_receivable"] == 28945017.84
+    assert extracted["previous"]["accounts_receivable"] == 30582101.06
+    assert extracted["current"]["total_assets"] == 108675298.50
+    assert extracted["previous"]["total_assets"] == 91739934.59
+    assert extracted["current"]["total_liabilities"] == 22322042.00
+    assert extracted["previous"]["total_liabilities"] == 21761339.74
+    assert extracted["current"]["total_equity"] == 84964993.51
+    assert extracted["previous"]["total_equity"] == 69812894.60
+
+
 def test_parse_notes_ignores_false_positive_single_digit_amounts():
     extractor = PDFDataExtractor()
     extractor.text_content = """

@@ -25,13 +25,14 @@
 - 将主要异常检测阈值和风险评分权重接入 `configs/thresholds.yaml` 与 `configs/weights.yaml`。
 - 将 `FraudDetector` 中高频规则和治理类规则接入运行时配置，包括业绩背离、现金流背离、应收/存货异常、政府补助、关联交易、产能异常、资产高估、报表勾稽、现金流质量、会计政策/估计变更、审计师变更、审计意见和历史违规。
 - 清理了打包与 CLI 入口配置：`requirements.txt` 只保留运行时依赖，`pyproject.toml` 与 `setup.py` 的脚本入口统一到共享 CLI 模块。
+- 补充了 `total_assets`、`total_liabilities`、`total_equity`、`accounts_receivable`、`net_cash_flow_financing` 等字段的提取规则，真实样本的资产负债表与现金流覆盖进一步完整。
+- 核心分析链路已统一改为共享 `logging` 输出，`analyzer`、`data_extractor`、`report_generator` 不再直接使用 `print`。
 - 新增了覆盖上述修复点的回归测试。
 
 ### 当前仍存在的风险
 
 - PDF 提取仍然高度依赖正则，版式变化的脆弱性较高。
 - 仍有不少已建模字段未完成提取，尤其是更完整的流动性、现金流和附注证据字段。
-- CLI、核心模块和工具层的日志与错误输出风格还不统一。
 - 批量 CLI 虽然暴露了 `--parallel`，但还没有真正实现并行处理。
 
 ## 第一阶段：稳定性与可信度
@@ -43,7 +44,6 @@
 - 补全 `current_assets`、`current_liabilities`、`cash_and_equivalents`、`net_cash_flow_investing` 等关键字段的提取覆盖。
 - 为典型年报版式建立 PDF 样本夹具和回归测试。
 - 继续补足提取字段与附注证据，让已配置化的规则能在更多年报版式下稳定触发。
-- 统一 `print` 和 `logging` 的使用方式，形成一致的日志输出策略。
 - 补充共享 CLI 入口的烟雾测试与安装说明，确保工程化入口在本地运行和安装后调用时都稳定可用。
 
 ## 第二阶段：分析深度

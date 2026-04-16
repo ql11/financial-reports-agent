@@ -5,9 +5,9 @@
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-import logging
+from .logging_utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def validate_pdf_file(filepath: str) -> Dict[str, Any]:

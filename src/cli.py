@@ -8,6 +8,7 @@ from pathlib import Path
 from .core.analyzer import FinancialFraudAnalyzer
 from .core.data_extractor import DataExtractionError
 from .utils.file_utils import list_files
+from .utils.logging_utils import configure_logging
 from .utils.validation_utils import validate_pdf_file
 
 
@@ -196,16 +197,19 @@ def build_main_parser() -> argparse.ArgumentParser:
 
 def analyze_main(argv: list[str] | None = None) -> int:
     args = build_analyze_parser().parse_args(argv)
+    configure_logging(verbose=args.verbose)
     return cmd_analyze(args)
 
 
 def batch_main(argv: list[str] | None = None) -> int:
     args = build_batch_parser().parse_args(argv)
+    configure_logging(verbose=args.verbose)
     return cmd_batch(args)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_main_parser().parse_args(argv)
+    configure_logging(verbose=getattr(args, "verbose", False))
 
     if not hasattr(args, "func"):
         build_main_parser().print_help()
