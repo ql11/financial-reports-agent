@@ -439,15 +439,21 @@ class FraudDetector:
     def _detect_capacity_anomalies(self, financial_data: FinancialData) -> Optional[FraudPattern]:
         """检测产能与投资异常"""
         indicators = []
+        turnover_threshold = self._get_threshold(
+            "fraud_detection", "capacity_anomalies", "total_asset_turnover_warning", default=0.5
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "capacity_anomalies", "score", default=1.5
+        )
         
         # 固定资产周转率下降
-        if financial_data.current_year.total_asset_turnover < 0.5:  # 假设阈值
+        if financial_data.current_year.total_asset_turnover < turnover_threshold:
             indicator = FraudIndicator(
                 type=FraudType.ASSET_MANIPULATION,
                 name="产能利用率下降",
                 description="固定资产周转率较低，产能利用率可能不足",
                 risk_level=RiskLevel.MEDIUM,
-                score=1.5,
+                score=pattern_score,
                 evidence=[
                     f"总资产周转率: {financial_data.current_year.total_asset_turnover:.2f}",
                     "产能利用率可能不足"
@@ -767,6 +773,24 @@ class FraudDetector:
         """
         indicators = []
         current = financial_data.current_year
+        construction_score = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "construction_in_progress_stagnant_score", default=2.5
+        )
+        turnover_threshold = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "total_asset_turnover_warning", default=0.5
+        )
+        asset_growth_threshold = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "asset_growth_warning", default=10.0
+        )
+        revenue_growth_ceiling = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "revenue_growth_ceiling", default=5.0
+        )
+        pattern_score = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "score", default=2.0
+        )
+        goodwill_score = self._get_threshold(
+            "fraud_detection", "asset_overstatement", "goodwill_insufficient_impairment_score", default=2.5
+        )
         
         # 在建工程迟迟不转固
         if "construction_in_progress_stagnant" in financial_data.notes:
@@ -775,7 +799,7 @@ class FraudDetector:
                 name="在建工程迟迟不转固",
                 description="在建工程长期未转入固定资产，可能持续利息资本化虚增资产",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=construction_score,
                 evidence=[
                     "在建工程长期不转固",
                     "可能通过利息资本化虚增资产、虚减费用"
@@ -789,16 +813,16 @@ class FraudDetector:
             indicators.append(indicator)
         
         # 产能与资产不匹配：总资产周转率低且固定资产增长
-        if current.total_asset_turnover < 0.5 and current.total_assets > 0:
+        if current.total_asset_turnover < turnover_threshold and current.total_assets > 0:
             revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
             asset_growth = financial_data.get_growth_rate("total_assets", 1)
-            if asset_growth > 10 and revenue_growth < 5:
+            if asset_growth > asset_growth_threshold and revenue_growth < revenue_growth_ceiling:
                 indicator = FraudIndicator(
                     type=FraudType.ASSET_OVERSTATE,
                     name="产能与资产不匹配",
                     description=f"资产增长{asset_growth:.1f}%但收入增长仅{revenue_growth:.1f}%，总资产周转率仅{current.total_asset_turnover:.2f}",
                     risk_level=RiskLevel.MEDIUM,
-                    score=2.0,
+                    score=pattern_score,
                     evidence=[
                         f"总资产周转率: {current.total_asset_turnover:.2f}",
                         f"资产增长率: {asset_growth:.1f}%",
@@ -820,7 +844,7 @@ class FraudDetector:
                 name="商誉减值计提不足",
                 description="商誉金额较大但减值计提不足，可能虚增资产",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=goodwill_score,
                 evidence=[
                     "商誉减值计提不足",
                     "可能通过少计提商誉减值虚增资产和利润"
@@ -910,17 +934,29 @@ class FraudDetector:
         """
         indicators = []
         current = financial_data.current_year
+        cash_profit_ratio_threshold = self._get_threshold(
+            "fraud_detection", "cross_statement_inconsistency", "cash_profit_ratio_warning", default=0.5
+        )
+        cash_profit_ratio_score = self._get_threshold(
+            "fraud_detection", "cross_statement_inconsistency", "cash_profit_ratio_score", default=3.0
+        )
+        profit_positive_cash_negative_score = self._get_threshold(
+            "fraud_detection", "cross_statement_inconsistency", "profit_positive_cash_negative_score", default=3.0
+        )
+        check_failed_score = self._get_threshold(
+            "fraud_detection", "cross_statement_inconsistency", "check_failed_score", default=3.0
+        )
         
         # 经营现金流/净利润比率
         if current.net_profit > 0 and current.net_cash_flow_operating > 0:
             cash_profit_ratio = current.net_cash_flow_operating / current.net_profit
-            if cash_profit_ratio < 0.5:
+            if cash_profit_ratio < cash_profit_ratio_threshold:
                 indicator = FraudIndicator(
                     type=FraudType.CROSS_STATEMENT_INCONSISTENCY,
                     name="经营现金流与净利润严重背离",
                     description=f"经营现金流/净利润={cash_profit_ratio:.2f}，远低于1，利润质量极差",
                     risk_level=RiskLevel.HIGH,
-                    score=3.0,
+                    score=cash_profit_ratio_score,
                     evidence=[
                         f"经营现金流: {current.net_cash_flow_operating:,.0f}",
                         f"净利润: {current.net_profit:,.0f}",
@@ -940,7 +976,7 @@ class FraudDetector:
                 name="净利润为正但经营现金流为负",
                 description="净利润为正但经营活动现金流为负，典型造假信号",
                 risk_level=RiskLevel.CRITICAL,
-                score=3.0,
+                score=profit_positive_cash_negative_score,
                 evidence=[
                     f"净利润: {current.net_profit:,.0f}",
                     f"经营现金流: {current.net_cash_flow_operating:,.0f}",
@@ -962,7 +998,7 @@ class FraudDetector:
                 name="报表勾稽关系不匹配",
                 description=f"三张报表勾稽关系校验失败: {check_detail}",
                 risk_level=RiskLevel.HIGH,
-                score=3.0,
+                score=check_failed_score,
                 evidence=[
                     f"勾稽关系异常: {check_detail}",
                     "报表间数据不一致，可能存在数据操纵"
@@ -994,6 +1030,12 @@ class FraudDetector:
         """
         indicators = []
         current = financial_data.current_year
+        free_cash_flow_score = self._get_threshold(
+            "fraud_detection", "cash_flow_quality", "free_cash_flow_negative_score", default=2.5
+        )
+        cash_balance_interest_score = self._get_threshold(
+            "fraud_detection", "cash_flow_quality", "cash_balance_interest_mismatch_score", default=2.5
+        )
         
         # 自由现金流 = 经营现金流 - 资本支出(用投资现金流近似)
         if hasattr(current, 'net_cash_flow_investing') and current.net_cash_flow_investing != 0:
@@ -1005,7 +1047,7 @@ class FraudDetector:
                     name="自由现金流为负但净利润为正",
                     description=f"自由现金流为{free_cash_flow:,.0f}，但净利润为{current.net_profit:,.0f}",
                     risk_level=RiskLevel.HIGH,
-                    score=2.5,
+                    score=free_cash_flow_score,
                     evidence=[
                         f"经营现金流: {current.net_cash_flow_operating:,.0f}",
                         f"资本支出(近似): {capital_expenditure:,.0f}",
@@ -1028,7 +1070,7 @@ class FraudDetector:
                 name="现金余额与利息收入不匹配",
                 description="现金及等价物余额异常高但利息收入很少，可能伪造现金",
                 risk_level=RiskLevel.HIGH,
-                score=2.5,
+                score=cash_balance_interest_score,
                 evidence=[
                     "现金余额高但利息收入少",
                     "真实存款应产生合理利息收入"

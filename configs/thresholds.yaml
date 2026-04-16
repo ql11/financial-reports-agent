@@ -123,6 +123,28 @@ fraud_detection:
     spread: 15.0                # 存货增速超过收入增速15个百分点
     warning: 20.0               # 且存货自身增速高于20%
 
+  capacity_anomalies:
+    total_asset_turnover_warning: 0.5  # 总资产周转率低于0.5预警
+    score: 1.5                         # 风险评分
+
+  asset_overstatement:
+    construction_in_progress_stagnant_score: 2.5  # 在建工程长期不转固评分
+    total_asset_turnover_warning: 0.5             # 总资产周转率低于0.5预警
+    asset_growth_warning: 10.0                    # 资产增速高于10%预警
+    revenue_growth_ceiling: 5.0                  # 收入增速低于5%视为未同步增长
+    goodwill_insufficient_impairment_score: 2.5  # 商誉减值不足评分
+    score: 2.0                                   # 产能与资产不匹配评分
+
+  cross_statement_inconsistency:
+    cash_profit_ratio_warning: 0.5        # 经营现金流/净利润低于0.5预警
+    cash_profit_ratio_score: 3.0          # 现金流与利润背离评分
+    profit_positive_cash_negative_score: 3.0  # 净利润为正但经营现金流为负评分
+    check_failed_score: 3.0               # 勾稽校验失败评分
+
+  cash_flow_quality:
+    free_cash_flow_negative_score: 2.5        # 自由现金流为负评分
+    cash_balance_interest_mismatch_score: 2.5 # 现金余额与利息收入不匹配评分
+
 # 风险等级阈值
 risk_levels:
   critical: 30.0  # 极高风险阈值
