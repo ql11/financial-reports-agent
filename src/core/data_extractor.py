@@ -94,19 +94,87 @@ class PDFDataExtractor:
         except:
             return None
 
-    def _extract_note_amount(self, pattern: str) -> Optional[str]:
-        """提取附注中的金额，过滤掉注释编号之类的伪匹配。"""
-        match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
-        if not match:
-            return None
+    def _note_lines(self) -> List[str]:
+        """按行切分附注文本，便于做就近匹配。"""
+        return [line.strip() for line in self.text_content.splitlines() if line.strip()]
 
-        value = match.group(1)
-        numeric_match = re.search(
-            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)',
-            value
+    def _is_directory_like_line(self, line: str) -> bool:
+        """过滤目录页、点线页码等明显噪声行。"""
+        return "目录" in line or bool(re.search(r"[.．·…]{3,}", line))
+
+    def _note_keyword_priority(self, line: str, keyword: str) -> int:
+        """对同一关键词的多处命中做优先级排序。"""
+        if keyword in line and any(token in line for token in ("账面余额", "账面价值")):
+            return 2
+        if line.strip() == keyword:
+            return 0
+        if re.match(r"^(?:\d+[.、]|[（(]\d+[)）]|附注|\d+\.\s*)", line):
+            return 0
+        return 1
+
+    def _extract_note_amount(self, keyword: str, stop_keywords: List[str]) -> Optional[str]:
+        """在关键词附近提取金额，避免跨附注串段误取。"""
+        amount_pattern = re.compile(
+            r'((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)(?:[亿万]?元)?)'
         )
-        if numeric_match:
-            return numeric_match.group(1)
+        lines = self._note_lines()
+        candidate_indexes = [
+            (self._note_keyword_priority(line, keyword), index)
+            for index, line in enumerate(lines)
+            if keyword in line and not self._is_directory_like_line(line)
+        ]
+
+        for _, index in sorted(candidate_indexes):
+            line = lines[index]
+
+            section_lines = [line]
+            for next_line in lines[index + 1:index + 10]:
+                if any(stop_keyword in next_line for stop_keyword in stop_keywords):
+                    break
+                section_lines.append(next_line)
+
+            for candidate_line in section_lines:
+                if keyword in candidate_line:
+                    keyword_suffix = candidate_line.split(keyword, 1)[1]
+                    numeric_match = amount_pattern.search(keyword_suffix)
+                    if numeric_match:
+                        return numeric_match.group(1)
+
+            for candidate_line in section_lines:
+                if "合计" in candidate_line:
+                    numeric_matches = amount_pattern.findall(candidate_line)
+                    if numeric_matches:
+                        return numeric_matches[-1]
+
+            section_text = "\n".join(section_lines)
+            numeric_match = amount_pattern.search(section_text)
+            if numeric_match:
+                return numeric_match.group(1)
+
+        return None
+
+    def _extract_related_party_percentage(self) -> Optional[str]:
+        """提取真实的关联交易占比，跳过目录页码等噪声。"""
+        percentage_pattern = re.compile(r'(\d+\.?\d*%)')
+        context_keywords = ("占", "占比", "比例", "采购", "销售", "收入", "金额")
+        invalid_context = ("目录", "不存在", "无重大")
+        lines = self._note_lines()
+
+        for index, line in enumerate(lines):
+            if "关联交易" not in line:
+                continue
+
+            window_lines = lines[index:index + 3]
+            window_text = "\n".join(window_lines)
+            if self._is_directory_like_line(line):
+                continue
+            if any(token in window_text for token in invalid_context):
+                continue
+
+            percentage_match = percentage_pattern.search(window_text)
+            if percentage_match and any(token in window_text for token in context_keywords):
+                return percentage_match.group(1)
+
         return None
     
     def _parse_company_info(self, financial_data: FinancialData):
@@ -462,24 +530,24 @@ class PDFDataExtractor:
     
     def _parse_notes(self, financial_data: FinancialData):
         """解析附注信息"""
-        notes_patterns = {
-            "related_party_transactions": r"关联交易.*?(\d+\.?\d*%)",
-            "accounting_policy_changes": r"会计政策变更",
-            "government_subsidies": r"政府补助.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)",
-            "bad_debt_provision": r"坏账准备.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)",
-            "inventory_provision": r"存货跌价准备.*?((?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+(?:\.\d+)?[亿万])元)"
+        note_keywords = {
+            "government_subsidies": "政府补助",
+            "bad_debt_provision": "坏账准备",
+            "inventory_provision": "存货跌价准备",
         }
-        
-        for key, pattern in notes_patterns.items():
-            if key == "related_party_transactions":
-                match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
-                if match:
-                    financial_data.notes[key] = match.group(1)
-            elif key == "accounting_policy_changes":
-                match = re.search(pattern, self.text_content, re.IGNORECASE | re.DOTALL)
-                if match:
-                    financial_data.notes[key] = True
-            else:
-                value = self._extract_note_amount(pattern)
-                if value:
-                    financial_data.notes[key] = value
+        stop_keywords = list(note_keywords.values())
+
+        related_party_transactions = self._extract_related_party_percentage()
+        if related_party_transactions:
+            financial_data.notes["related_party_transactions"] = related_party_transactions
+
+        if re.search(r"会计政策变更", self.text_content, re.IGNORECASE | re.DOTALL):
+            financial_data.notes["accounting_policy_changes"] = True
+
+        for key, keyword in note_keywords.items():
+            value = self._extract_note_amount(
+                keyword,
+                stop_keywords=[item for item in stop_keywords if item != keyword],
+            )
+            if value:
+                financial_data.notes[key] = value

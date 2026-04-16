@@ -14,16 +14,49 @@ from .data_extractor import PDFDataExtractor
 from .fraud_detector import FraudDetector
 from .risk_assessor import RiskAssessor
 from .report_generator import ReportGenerator
+from ..utils.file_utils import load_yaml
 
 
 class FinancialFraudAnalyzer:
     """财报造假分析器"""
     
-    def __init__(self, output_dir: str = "outputs"):
+    def __init__(
+        self,
+        output_dir: str = "outputs",
+        thresholds_config_path: Optional[str] = None,
+        weights_config_path: Optional[str] = None,
+    ):
         self.data_extractor = PDFDataExtractor()
         self.fraud_detector = FraudDetector()
-        self.risk_assessor = RiskAssessor()
+        self.thresholds = self._load_thresholds(thresholds_config_path)
+        self.risk_assessor = RiskAssessor(weights_config_path=weights_config_path)
         self.report_generator = ReportGenerator(output_dir)
+
+    def _load_thresholds(self, thresholds_config_path: Optional[str]) -> Dict[str, Any]:
+        """加载阈值配置，缺失时回退到运行时代码默认值。"""
+        config_path = thresholds_config_path
+        if config_path is None:
+            config_path = str(
+                Path(__file__).resolve().parents[2] / "configs" / "thresholds.yaml"
+            )
+
+        thresholds = load_yaml(config_path)
+        return thresholds or {}
+
+    def _get_threshold(self, *path: str, default: Any) -> Any:
+        """读取分层阈值配置。"""
+        value: Any = self.thresholds
+        for key in path:
+            if not isinstance(value, dict):
+                return default
+            value = value.get(key)
+            if value is None:
+                return default
+        return value
+
+    def _format_ratio_threshold(self, value: float) -> str:
+        """将比例型阈值转为易读字符串。"""
+        return f"{value:.0%}" if value <= 1 else f"{value:.1f}%"
         
     def analyze(self, pdf_path: str, company_name: str = "", report_year: int = 0) -> AnalysisReport:
         """分析财报文件
@@ -182,25 +215,64 @@ class FinancialFraudAnalyzer:
         anomalies = []
         
         current = financial_data.current_year
+        gross_margin_threshold = self._get_threshold(
+            "profitability", "gross_margin", "warning", default=10.0
+        )
+        net_margin_threshold = self._get_threshold(
+            "profitability", "net_margin", "warning", default=3.0
+        )
+        debt_ratio_threshold = self._get_threshold(
+            "solvency", "debt_ratio", "warning", default=70.0
+        )
+        current_ratio_threshold = self._get_threshold(
+            "solvency", "current_ratio", "warning", default=1.0
+        )
+        cash_revenue_threshold = self._get_threshold(
+            "fraud_detection", "cash_revenue_ratio", "warning", default=0.8
+        )
+        receivable_ratio_threshold = self._get_threshold(
+            "fraud_detection", "receivable_ratio", "warning", default=0.5
+        )
+        cash_profit_threshold = self._get_threshold(
+            "fraud_detection", "cash_profit_ratio", "warning", default=0.5
+        )
+        revenue_growth_threshold = self._get_threshold(
+            "growth", "revenue_growth", "critical", default=-20.0
+        )
+        cash_flow_growth_threshold = self._get_threshold(
+            "growth", "cash_flow_growth", "warning", default=-30.0
+        )
+        receivables_growth_spread = self._get_threshold(
+            "fraud_detection", "receivables_growth_vs_revenue", "spread", default=10.0
+        )
+        receivables_growth_threshold = self._get_threshold(
+            "fraud_detection", "receivables_growth_vs_revenue", "warning", default=20.0
+        )
+        inventory_growth_spread = self._get_threshold(
+            "fraud_detection", "inventory_growth_vs_revenue", "spread", default=15.0
+        )
+        inventory_growth_threshold = self._get_threshold(
+            "fraud_detection", "inventory_growth_vs_revenue", "warning", default=20.0
+        )
         
         # === 盈利能力异常 ===
         
         # 毛利率过低
-        if current.gross_margin < 10:
+        if current.gross_margin < gross_margin_threshold:
             anomalies.append({
                 "metric": "毛利率",
                 "value": current.gross_margin,
-                "threshold": 10.0,
+                "threshold": gross_margin_threshold,
                 "description": "毛利率过低，可能面临成本压力或定价问题",
                 "severity": "high"
             })
         
         # 净利率过低
-        if current.net_margin < 3:
+        if current.net_margin < net_margin_threshold:
             anomalies.append({
                 "metric": "净利率",
                 "value": current.net_margin,
-                "threshold": 3.0,
+                "threshold": net_margin_threshold,
                 "description": "净利率过低，盈利能力较弱",
                 "severity": "medium"
             })
@@ -208,21 +280,21 @@ class FinancialFraudAnalyzer:
         # === 偿债能力异常 ===
         
         # 资产负债率过高
-        if current.debt_ratio > 70:
+        if current.debt_ratio > debt_ratio_threshold:
             anomalies.append({
                 "metric": "资产负债率",
                 "value": current.debt_ratio,
-                "threshold": 70.0,
+                "threshold": debt_ratio_threshold,
                 "description": "资产负债率过高，财务风险较大",
                 "severity": "high"
             })
         
         # 流动比率过低
-        if current.current_ratio < 1.0:
+        if current.current_ratio < current_ratio_threshold:
             anomalies.append({
                 "metric": "流动比率",
                 "value": current.current_ratio,
-                "threshold": 1.0,
+                "threshold": current_ratio_threshold,
                 "description": "流动比率过低，短期偿债能力不足",
                 "severity": "high"
             })
@@ -232,11 +304,11 @@ class FinancialFraudAnalyzer:
         # 现金收入比 = 销售商品收到的现金 / 营业收入
         if current.operating_revenue > 0 and hasattr(current, 'cash_from_sales') and current.cash_from_sales > 0:
             cash_revenue_ratio = current.cash_from_sales / current.operating_revenue
-            if cash_revenue_ratio < 0.8:
+            if cash_revenue_ratio < cash_revenue_threshold:
                 anomalies.append({
                     "metric": "现金收入比",
                     "value": f"{cash_revenue_ratio:.1%}",
-                    "threshold": "80%",
+                    "threshold": self._format_ratio_threshold(cash_revenue_threshold),
                     "description": "现金收入比低于80%，收入质量差，可能存在虚构收入",
                     "severity": "high"
                 })
@@ -244,11 +316,11 @@ class FinancialFraudAnalyzer:
         # 应收账款占收入比
         if current.operating_revenue > 0 and current.accounts_receivable > 0:
             receivable_ratio = current.accounts_receivable / current.operating_revenue
-            if receivable_ratio > 0.5:
+            if receivable_ratio > receivable_ratio_threshold:
                 anomalies.append({
                     "metric": "应收账款占收入比",
                     "value": f"{receivable_ratio:.1%}",
-                    "threshold": "50%",
+                    "threshold": self._format_ratio_threshold(receivable_ratio_threshold),
                     "description": "应收账款占收入比过高，可能虚增收入或回款困难",
                     "severity": "high"
                 })
@@ -258,11 +330,11 @@ class FinancialFraudAnalyzer:
         # 经营现金流/净利润比率
         if current.net_profit > 0 and current.net_cash_flow_operating > 0:
             cash_profit_ratio = current.net_cash_flow_operating / current.net_profit
-            if cash_profit_ratio < 0.5:
+            if cash_profit_ratio < cash_profit_threshold:
                 anomalies.append({
                     "metric": "经营现金流/净利润",
                     "value": f"{cash_profit_ratio:.2f}",
-                    "threshold": "0.5",
+                    "threshold": str(cash_profit_threshold),
                     "description": "经营现金流/净利润<0.5，盈利质量极差，典型造假信号",
                     "severity": "high"
                 })
@@ -281,44 +353,50 @@ class FinancialFraudAnalyzer:
         
         # 收入大幅下降
         revenue_growth = analysis.growth_ratios.get("营业收入增长率", 0)
-        if revenue_growth < -20:
+        if revenue_growth < revenue_growth_threshold:
             anomalies.append({
                 "metric": "营业收入增长率",
                 "value": revenue_growth,
-                "threshold": -20.0,
+                "threshold": revenue_growth_threshold,
                 "description": "营业收入大幅下降，业务可能面临困难",
                 "severity": "high"
             })
         
         # 现金流大幅下降
         cash_flow_growth = analysis.growth_ratios.get("经营活动现金流增长率", 0)
-        if cash_flow_growth < -30:
+        if cash_flow_growth < cash_flow_growth_threshold:
             anomalies.append({
                 "metric": "经营活动现金流增长率",
                 "value": cash_flow_growth,
-                "threshold": -30.0,
+                "threshold": cash_flow_growth_threshold,
                 "description": "经营活动现金流大幅下降，现金流质量可能恶化",
                 "severity": "high"
             })
         
         # 应收账款增速 > 收入增速（新增红警信号）
         receivables_growth = financial_data.get_growth_rate("accounts_receivable", 1)
-        if receivables_growth > revenue_growth + 10 and receivables_growth > 20:
+        if (
+            receivables_growth > revenue_growth + receivables_growth_spread
+            and receivables_growth > receivables_growth_threshold
+        ):
             anomalies.append({
                 "metric": "应收账款增速vs收入增速",
                 "value": f"应收{receivables_growth:.1f}% vs 收入{revenue_growth:.1f}%",
-                "threshold": "应收增速≤收入增速",
+                "threshold": f"+{receivables_growth_spread:.1f}pct / {receivables_growth_threshold:.1f}%",
                 "description": "应收账款增速远超收入增速，可能虚构收入",
                 "severity": "high"
             })
         
         # 存货增速 > 收入增速（新增红警信号）
         inventory_growth = financial_data.get_growth_rate("inventory", 1)
-        if inventory_growth > revenue_growth + 15 and inventory_growth > 20:
+        if (
+            inventory_growth > revenue_growth + inventory_growth_spread
+            and inventory_growth > inventory_growth_threshold
+        ):
             anomalies.append({
                 "metric": "存货增速vs收入增速",
                 "value": f"存货{inventory_growth:.1f}% vs 收入{revenue_growth:.1f}%",
-                "threshold": "存货增速≤收入增速",
+                "threshold": f"+{inventory_growth_spread:.1f}pct / {inventory_growth_threshold:.1f}%",
                 "description": "存货增速远超收入增速，可能少结转成本或存货虚增",
                 "severity": "high"
             })

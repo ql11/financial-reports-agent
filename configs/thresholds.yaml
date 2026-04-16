@@ -102,6 +102,24 @@ fraud_detection:
     percentage_threshold: 20.0   # 关联交易比例超过20%
     score: 2.0                   # 风险评分
 
+  # 收入质量阈值
+  cash_revenue_ratio:
+    warning: 0.8                # 销售收现比低于80%预警
+
+  receivable_ratio:
+    warning: 0.5                # 应收账款占收入比高于50%预警
+
+  cash_profit_ratio:
+    warning: 0.5                # 经营现金流/净利润低于0.5预警
+
+  receivables_growth_vs_revenue:
+    spread: 10.0                # 应收增速超过收入增速10个百分点
+    warning: 20.0               # 且应收自身增速高于20%
+
+  inventory_growth_vs_revenue:
+    spread: 15.0                # 存货增速超过收入增速15个百分点
+    warning: 20.0               # 且存货自身增速高于20%
+
 # 风险等级阈值
 risk_levels:
   critical: 30.0  # 极高风险阈值

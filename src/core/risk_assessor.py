@@ -11,45 +11,133 @@
 5. 风险集中度（高风险指标占比）
 """
 
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from ..models.financial_data import FinancialData
 from ..models.fraud_indicators import FraudPattern, RiskLevel
 from ..models.report_model import RiskAssessment
+from ..utils.file_utils import load_yaml
 
 
 class RiskAssessor:
     """风险评估器"""
     
-    def __init__(self):
-        # 模式权重：不同模式对风险的贡献不同
+    DEFAULT_PATTERN_WEIGHTS = {
+        "revenue_profit_divergence": 1.3,
+        "cash_flow_divergence": 1.5,
+        "cash_flow_quality": 1.4,
+        "receivables_anomalies": 1.1,
+        "fictitious_revenue": 1.4,
+        "inventory_anomalies": 1.0,
+        "subsidy_manipulation": 0.8,
+        "capacity_anomalies": 0.7,
+        "related_party_issues": 1.3,
+        "accounting_changes": 0.6,
+        "accounting_estimates": 0.7,
+        "audit_issues": 2.0,
+        "auditor_change": 1.8,
+        "historical_violations": 1.8,
+        "expense_capitalization": 1.2,
+        "asset_overstate": 1.2,
+        "liability_conceal": 1.3,
+        "cross_statement_inconsistency": 1.6,
+    }
+
+    PATTERN_WEIGHT_ALIASES = {
+        "revenue_profit_divergence": ("业绩背离",),
+        "cash_flow_divergence": ("现金流异常",),
+        "cash_flow_quality": ("现金流质量",),
+        "receivables_anomalies": ("应收账款",),
+        "fictitious_revenue": ("虚构收入",),
+        "inventory_anomalies": ("存货",),
+        "subsidy_manipulation": ("政府补助",),
+        "capacity_anomalies": ("产能",),
+        "related_party_issues": ("关联交易",),
+        "accounting_changes": ("会计政策",),
+        "accounting_estimates": ("会计估计",),
+        "audit_issues": ("审计问题",),
+        "auditor_change": ("审计师变更",),
+        "historical_violations": ("历史违规",),
+        "expense_capitalization": ("费用资本化",),
+        "asset_overstate": ("资产高估",),
+        "liability_conceal": ("负债隐瞒",),
+        "cross_statement_inconsistency": ("报表勾稽",),
+    }
+
+    def __init__(self, weights_config_path: Optional[str] = None):
+        config = self._load_weights(weights_config_path)
+
         self.pattern_weights = {
-            "业绩背离": 1.3,
-            "现金流异常": 1.5,
-            "现金流质量": 1.4,
-            "应收账款": 1.1,
-            "虚构收入": 1.4,
-            "存货": 1.0,
-            "政府补助": 0.8,
-            "产能": 0.7,
-            "关联交易": 1.3,
-            "会计政策": 0.6,
-            "会计估计": 0.7,
-            "审计问题": 2.0,
-            "审计师变更": 1.8,
-            "历史违规": 1.8,
-            "费用资本化": 1.2,
-            "资产高估": 1.2,
-            "负债隐瞒": 1.3,
-            "报表勾稽": 1.6,
+            **self.DEFAULT_PATTERN_WEIGHTS,
+            **config.get("fraud_pattern_weights", {}),
         }
-        
-        # 风险等级 → 基础分（非线性，拉开差距）
         self.level_base_scores = {
-            RiskLevel.CRITICAL: 8.0,
-            RiskLevel.HIGH: 4.5,
-            RiskLevel.MEDIUM: 1.5,
-            RiskLevel.LOW: 0.3,
+            RiskLevel.CRITICAL: config.get("risk_level_base_scores", {}).get("critical", 8.0),
+            RiskLevel.HIGH: config.get("risk_level_base_scores", {}).get("high", 4.5),
+            RiskLevel.MEDIUM: config.get("risk_level_base_scores", {}).get("medium", 1.5),
+            RiskLevel.LOW: config.get("risk_level_base_scores", {}).get("low", 0.3),
         }
+        self.max_risk_bonus = {
+            RiskLevel.CRITICAL: config.get("max_risk_bonus", {}).get("critical", 5.0),
+            RiskLevel.HIGH: config.get("max_risk_bonus", {}).get("high", 2.0),
+            RiskLevel.MEDIUM: config.get("max_risk_bonus", {}).get("medium", 0.0),
+            RiskLevel.LOW: config.get("max_risk_bonus", {}).get("low", 0.0),
+        }
+        self.risk_level_thresholds = {
+            RiskLevel.CRITICAL: config.get("risk_level_thresholds", {}).get("critical", 38.0),
+            RiskLevel.HIGH: config.get("risk_level_thresholds", {}).get("high", 25.0),
+            RiskLevel.MEDIUM: config.get("risk_level_thresholds", {}).get("medium", 14.0),
+        }
+        self.density_rules = {
+            "power": config.get("density_rules", {}).get("power", 1.5),
+            "scale": config.get("density_rules", {}).get("scale", 8.0),
+            "critical_density": config.get("density_rules", {}).get("critical_density", 0.6),
+            "critical_score_floor": config.get("density_rules", {}).get("critical_score_floor", 30.0),
+        }
+        self.breadth_rules = {
+            "per_pattern": config.get("breadth_rules", {}).get("per_pattern", 0.5),
+            "max_score": config.get("breadth_rules", {}).get("max_score", 5.0),
+        }
+        self.concentration_rules = {
+            "power": config.get("concentration_rules", {}).get("power", 1.3),
+            "scale": config.get("concentration_rules", {}).get("scale", 4.0),
+        }
+        self.financial_severity_rules = {
+            "net_profit_negative": config.get("financial_severity", {}).get("net_profit_negative", 3.0),
+            "loss_ratio_over_5pct": config.get("financial_severity", {}).get("loss_ratio_over_5pct", 1.5),
+            "revenue_growth_below_negative_20": config.get("financial_severity", {}).get(
+                "revenue_growth_below_negative_20", 2.0
+            ),
+            "revenue_growth_below_negative_10": config.get("financial_severity", {}).get(
+                "revenue_growth_below_negative_10", 1.0
+            ),
+            "operating_cash_flow_negative": config.get("financial_severity", {}).get(
+                "operating_cash_flow_negative", 2.5
+            ),
+            "debt_ratio_above_70": config.get("financial_severity", {}).get("debt_ratio_above_70", 1.5),
+            "debt_ratio_above_60": config.get("financial_severity", {}).get("debt_ratio_above_60", 0.5),
+        }
+        self.critical_pattern_rules = {
+            "critical_min_score": config.get("critical_pattern_rules", {}).get("critical_min_score", 35.0),
+            "critical_min_density": config.get("critical_pattern_rules", {}).get("critical_min_density", 0.5),
+            "high_floor_for_critical_pattern": config.get("critical_pattern_rules", {}).get(
+                "high_floor_for_critical_pattern", True
+            ),
+        }
+        self.score_caps = {
+            "total": config.get("score_caps", {}).get("total", 50.0),
+        }
+
+    def _load_weights(self, weights_config_path: Optional[str]) -> Dict[str, Any]:
+        """加载评分配置，缺失时回退为代码默认值。"""
+        config_path = weights_config_path
+        if config_path is None:
+            config_path = str(
+                Path(__file__).resolve().parents[2] / "configs" / "weights.yaml"
+            )
+
+        weights = load_yaml(config_path)
+        return weights or {}
     
     def assess_risk(self, fraud_patterns: List[FraudPattern], financial_data: FinancialData) -> RiskAssessment:
         """评估风险"""
@@ -76,12 +164,15 @@ class RiskAssessor:
             if p.risk_level in [RiskLevel.HIGH, RiskLevel.CRITICAL]
         )
         risk_density = high_critical_count / len(fraud_patterns)
-        # 用1.5次方放大差异：0.5→0.35, 0.62→0.49, 0.83→0.76
-        density_score = (risk_density ** 1.5) * 8.0
+        density_score = (
+            risk_density ** self.density_rules["power"]
+        ) * self.density_rules["scale"]
         
         # === 维度4：风险广度（模式数量加分）===
-        # 3个模式→1.5, 6个→3.0, 8个→4.0, 10个→5.0
-        breadth_score = min(len(fraud_patterns) * 0.5, 5.0)
+        breadth_score = min(
+            len(fraud_patterns) * self.breadth_rules["per_pattern"],
+            self.breadth_rules["max_score"],
+        )
         
         # === 维度5：风险集中度 ===
         total_indicators = 0
@@ -92,7 +183,9 @@ class RiskAssessor:
                 if indicator.risk_level in [RiskLevel.HIGH, RiskLevel.CRITICAL]:
                     high_critical_indicators += 1
         risk_concentration = high_critical_indicators / total_indicators if total_indicators > 0 else 0
-        concentration_score = (risk_concentration ** 1.3) * 4.0
+        concentration_score = (
+            risk_concentration ** self.concentration_rules["power"]
+        ) * self.concentration_rules["scale"]
         
         # === 最高风险等级 ===
         max_risk = RiskLevel.LOW
@@ -105,17 +198,12 @@ class RiskAssessor:
             elif pattern.risk_level == RiskLevel.MEDIUM and max_risk not in [RiskLevel.HIGH, RiskLevel.CRITICAL]:
                 max_risk = RiskLevel.MEDIUM
         
-        max_risk_bonus = {
-            RiskLevel.CRITICAL: 5.0,
-            RiskLevel.HIGH: 2.0,
-            RiskLevel.MEDIUM: 0.0,
-            RiskLevel.LOW: 0.0,
-        }[max_risk]
+        max_risk_bonus = self.max_risk_bonus[max_risk]
         
         # === 综合评分 ===
         total_score = min(
             severity_score + financial_severity + density_score + breadth_score + concentration_score + max_risk_bonus,
-            50.0
+            self.score_caps["total"]
         )
         
         risk_assessment.total_score = round(total_score, 1)
@@ -139,15 +227,18 @@ class RiskAssessor:
             base = self.level_base_scores.get(pattern.risk_level, 1.0)
             
             # 匹配权重
-            weight = 1.0
-            for key, w in self.pattern_weights.items():
-                if key in pattern.name:
-                    weight = w
-                    break
+            weight = self._get_pattern_weight(pattern.name)
             
             total += base * weight
         
         return total
+
+    def _get_pattern_weight(self, pattern_name: str) -> float:
+        """按模式名称映射到配置权重。"""
+        for config_key, aliases in self.PATTERN_WEIGHT_ALIASES.items():
+            if any(alias in pattern_name for alias in aliases):
+                return self.pattern_weights.get(config_key, 1.0)
+        return 1.0
     
     def _calc_financial_severity(self, financial_data: FinancialData) -> float:
         """计算财务严重度
@@ -163,29 +254,29 @@ class RiskAssessor:
         
         # 净利润为负（亏损）—— 比利润下降严重得多
         if current.net_profit < 0:
-            bonus += 3.0
+            bonus += self.financial_severity_rules["net_profit_negative"]
             # 亏损金额越大越严重
             if current.operating_revenue > 0:
                 loss_ratio = abs(current.net_profit) / current.operating_revenue
                 if loss_ratio > 0.05:  # 亏损超过收入5%
-                    bonus += 1.5
+                    bonus += self.financial_severity_rules["loss_ratio_over_5pct"]
         
         # 收入大幅下降
         revenue_growth = financial_data.get_growth_rate("operating_revenue", 1)
         if revenue_growth < -20:
-            bonus += 2.0
+            bonus += self.financial_severity_rules["revenue_growth_below_negative_20"]
         elif revenue_growth < -10:
-            bonus += 1.0
+            bonus += self.financial_severity_rules["revenue_growth_below_negative_10"]
         
         # 经营现金流为负
         if current.net_cash_flow_operating < 0:
-            bonus += 2.5
+            bonus += self.financial_severity_rules["operating_cash_flow_negative"]
         
         # 资产负债率过高
         if current.debt_ratio > 70:
-            bonus += 1.5
+            bonus += self.financial_severity_rules["debt_ratio_above_70"]
         elif current.debt_ratio > 60:
-            bonus += 0.5
+            bonus += self.financial_severity_rules["debt_ratio_above_60"]
         
         return bonus
     
@@ -193,20 +284,27 @@ class RiskAssessor:
         """确定风险等级"""
         # CRITICAL模式 → 至少HIGH，分数够高则CRITICAL
         if max_risk == RiskLevel.CRITICAL:
-            if score >= 35 or risk_density >= 0.5:
+            if (
+                score >= self.critical_pattern_rules["critical_min_score"]
+                or risk_density >= self.critical_pattern_rules["critical_min_density"]
+            ):
                 return RiskLevel.CRITICAL
-            return RiskLevel.HIGH
+            if self.critical_pattern_rules["high_floor_for_critical_pattern"]:
+                return RiskLevel.HIGH
         
         # 高风险密度 + 分数够高 → CRITICAL
-        if risk_density >= 0.6 and score >= 30:
+        if (
+            risk_density >= self.density_rules["critical_density"]
+            and score >= self.density_rules["critical_score_floor"]
+        ):
             return RiskLevel.CRITICAL
         
         # 常规分数阈值
-        if score >= 38:
+        if score >= self.risk_level_thresholds[RiskLevel.CRITICAL]:
             return RiskLevel.CRITICAL
-        elif score >= 25:
+        elif score >= self.risk_level_thresholds[RiskLevel.HIGH]:
             return RiskLevel.HIGH
-        elif score >= 14:
+        elif score >= self.risk_level_thresholds[RiskLevel.MEDIUM]:
             return RiskLevel.MEDIUM
         else:
             return RiskLevel.LOW

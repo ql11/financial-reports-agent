@@ -20,13 +20,16 @@
 - 补全了已被下游规则使用但之前未计算的周转率字段。
 - 修复了批量分析不尊重 `--format` 参数的问题。
 - 针对样本年报补充了股票代码和关键流动性字段的提取规则。
+- 收紧了附注提取范围，修复了政府补助、坏账准备、存货跌价准备串段误提取的问题。
+- 过滤了目录样式的“关联交易 100%”噪声，避免误触发关联方字段。
+- 将主要异常检测阈值和风险评分权重接入 `configs/thresholds.yaml` 与 `configs/weights.yaml`。
 - 新增了覆盖上述修复点的回归测试。
 
 ### 当前仍存在的风险
 
 - PDF 提取仍然高度依赖正则，版式变化的脆弱性较高。
 - 仍有不少已建模字段未完成提取，尤其是更完整的流动性、现金流和附注证据字段。
-- 运行时阈值和权重仍主要硬编码在代码里，尚未真正由配置驱动。
+- 虽然主要异常检测阈值和评分权重已完成配置接线，但 `FraudDetector` 内仍有一部分细则没有完全配置化。
 - CLI、核心模块和工具层的日志与错误输出风格还不统一。
 - 批量 CLI 虽然暴露了 `--parallel`，但还没有真正实现并行处理。
 
@@ -38,7 +41,7 @@
 
 - 补全 `current_assets`、`current_liabilities`、`cash_and_equivalents`、`net_cash_flow_investing` 等关键字段的提取覆盖。
 - 为典型年报版式建立 PDF 样本夹具和回归测试。
-- 将 `configs/thresholds.yaml` 与 `configs/weights.yaml` 真正接入检测与评分逻辑。
+- 继续把 `FraudDetector` 里的细分规则阈值也迁移到 `configs/thresholds.yaml`，彻底清理剩余硬编码。
 - 统一 `print` 和 `logging` 的使用方式，形成一致的日志输出策略。
 - 清理打包和环境配置：
   - 对齐 `requirements.txt` 与 `pyproject.toml`；
