@@ -96,6 +96,79 @@ class PDFDataExtractor:
         except:
             return None
 
+    def _statement_lines(self, text: str) -> List[str]:
+        """保留更像报表正文的行，避开经营分析区中的比例列污染。"""
+        lines = []
+        for raw_line in text.splitlines():
+            line = re.sub(r'\s+', ' ', raw_line).strip()
+            if not line or self._is_analysis_or_ratio_line(line):
+                continue
+            lines.append(line)
+        return lines
+
+    def _is_analysis_or_ratio_line(self, line: str) -> bool:
+        """过滤包含百分比或明显分析区语义的行。"""
+        if '%' in line:
+            return True
+
+        analysis_keywords = (
+            "经营情况分析",
+            "财务指标",
+            "主要会计数据",
+            "主要财务指标",
+            "变动比例",
+            "占比",
+            "同比",
+            "增长率",
+            "毛利率",
+            "周转率",
+            "本期比上年同期",
+            "本期末比上年期末",
+        )
+        return any(keyword in line for keyword in analysis_keywords)
+
+    def _extract_amounts_from_line(self, line: str) -> List[float]:
+        """从单行报表文本中提取金额，忽略附注编号等小整数。"""
+        amount_pattern = re.compile(
+            r'-?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?|\d+\.\d+)'
+        )
+        values = []
+        for token in amount_pattern.findall(line):
+            value = self._parse_number(token)
+            if value is not None:
+                values.append(value)
+        return values
+
+    def _find_statement_amounts(self, lines: List[str], labels: List[str]) -> Optional[List[float]]:
+        """按标签优先级从可信报表行中提取 1-2 个金额。"""
+        for label in labels:
+            for line in lines:
+                if label not in line:
+                    continue
+                values = self._extract_amounts_from_line(line)
+                if 1 <= len(values) <= 2:
+                    return values
+        return None
+
+    def _assign_from_statement_lines(
+        self,
+        result: Dict[str, Dict[str, float]],
+        lines: List[str],
+        field: str,
+        labels: List[str],
+    ) -> bool:
+        """使用报表正文行覆盖字段；若只有当年值，则清理旧的上年污染值。"""
+        values = self._find_statement_amounts(lines, labels)
+        if not values:
+            return False
+
+        result['current'][field] = values[0]
+        if len(values) > 1:
+            result['previous'][field] = values[1]
+        else:
+            result['previous'].pop(field, None)
+        return True
+
     def _note_lines(self) -> List[str]:
         """按行切分附注文本，便于做就近匹配。"""
         return [line.strip() for line in self.text_content.splitlines() if line.strip()]
@@ -269,6 +342,7 @@ class PDFDataExtractor:
         所有数值正则都使用 -?[\\d,]+\\.?\\d* 支持负数
         """
         result = {'current': {}, 'previous': {}}
+        statement_lines = self._statement_lines(text)
         
         # === 营业收入 ===
         # 模式1: "确认营业收入人民币14,963,644,356.95元"
@@ -520,6 +594,51 @@ class PDFDataExtractor:
             if v1 and abs(v1) > 1000000:
                 result['current']['operating_cost'] = v1
                 result['previous']['operating_cost'] = v2
+
+        # 使用更可信的报表正文行覆盖容易被分析区污染或被阈值误杀的字段。
+        self._assign_from_statement_lines(
+            result,
+            statement_lines,
+            'operating_revenue',
+            ['其中：营业收入', '营业收入'],
+        )
+        self._assign_from_statement_lines(
+            result,
+            statement_lines,
+            'net_profit_attributable',
+            [
+                '归属于母公司所有者的净利润',
+                '归属于上市公司股东的净利润',
+                '归属于挂牌公司股东的净利润',
+            ],
+        )
+        if not self._assign_from_statement_lines(
+            result,
+            statement_lines,
+            'net_profit',
+            ['五、净利润', '六、净利润', '净利润（净亏损以', '净利润'],
+        ):
+            if 'net_profit_attributable' in result['current']:
+                result['current']['net_profit'] = result['current']['net_profit_attributable']
+            if 'net_profit_attributable' in result['previous']:
+                result['previous']['net_profit'] = result['previous']['net_profit_attributable']
+
+        for field, labels in (
+            ('net_cash_flow_operating', ['经营活动产生的现金流量净额']),
+            ('cash_from_sales', ['销售商品、提供劳务收到的现金']),
+            ('net_cash_flow_investing', ['投资活动产生的现金流量净额']),
+            ('net_cash_flow_financing', ['筹资活动产生的现金流量净额']),
+            ('cash_and_equivalents', ['货币资金']),
+            ('current_assets', ['流动资产合计']),
+            ('current_liabilities', ['流动负债合计']),
+            ('total_liabilities', ['负债合计', '负债总计']),
+            ('total_assets', ['资产总计', '资产总额']),
+            ('total_equity', ['所有者权益合计', '归属于挂牌公司股东的净资产']),
+            ('inventory', ['存货']),
+            ('accounts_receivable', ['应收账款']),
+            ('operating_cost', ['营业成本']),
+        ):
+            self._assign_from_statement_lines(result, statement_lines, field, labels)
         
         return result
     

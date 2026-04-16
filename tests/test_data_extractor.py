@@ -70,6 +70,69 @@ def test_extract_key_figures_parses_balance_sheet_and_financing_fields_from_two_
     assert extracted["previous"]["total_equity"] == 69812894.60
 
 
+def test_extract_key_figures_parses_neeq_net_profit_without_large_amount_threshold():
+    extractor = PDFDataExtractor()
+    text = """
+归属于挂牌公司股东的净利润 62,360.44 -1,052,619.66 105.92%
+五、净利润（净亏损以“－”号填列） 62,360.44 -1,052,619.66
+1.持续经营净利润（净亏损以“-”号填列） 62,360.44 -1,052,619.66
+2.归属于母公司所有者的净利润（净亏损以“-”号填列） 62,360.44 -1,052,619.66
+"""
+
+    extracted = extractor._extract_key_figures(text, 2025)
+
+    assert extracted["current"]["net_profit"] == 62360.44
+    assert extracted["previous"]["net_profit"] == -1052619.66
+    assert extracted["current"]["net_profit_attributable"] == 62360.44
+    assert extracted["previous"]["net_profit_attributable"] == -1052619.66
+
+
+def test_extract_key_figures_prefers_statement_lines_over_operating_analysis_ratios():
+    extractor = PDFDataExtractor()
+    text = """
+经营情况分析
+货币资金 55,765,666.18 42.46% 37,776,213.90 32.06% 47.62%
+应收账款 21,249,889.68 16.18% 27,450,067.49 23.30% -22.59%
+存货 42,824,470.62 32.61% 27,158,181.33 23.05% 57.69%
+货币资金 附注五、1 55,765,666.18 37,776,213.90
+应收账款 附注五、3 21,249,889.68 27,450,067.49
+存货 附注五、5 42,824,470.62 27,158,181.33
+流动资产合计 124,936,173.72 111,113,276.21
+流动负债合计 84,389,688.60 68,706,660.22
+资产总计 131,331,303.17 117,812,671.58
+负债合计 84,389,688.60 68,706,660.22
+其中：营业收入 附注五、22 224,861,569.31 280,589,139.19
+五、净利润（净亏损以“－”号填列） 438,643.21 6,612,499.30
+2.归属于母公司所有者的净利润（净亏损以“-”号填列） 659,358.66 6,668,858.15
+"""
+
+    extracted = extractor._extract_key_figures(text, 2025)
+
+    assert extracted["current"]["cash_and_equivalents"] == 55765666.18
+    assert extracted["previous"]["cash_and_equivalents"] == 37776213.90
+    assert extracted["current"]["accounts_receivable"] == 21249889.68
+    assert extracted["previous"]["accounts_receivable"] == 27450067.49
+    assert extracted["current"]["inventory"] == 42824470.62
+    assert extracted["previous"]["inventory"] == 27158181.33
+
+
+def test_extract_key_figures_parses_single_year_line_with_note_reference():
+    extractor = PDFDataExtractor()
+    text = """
+应收账款 五、（二） 23,750.00
+货币资金 五、（一） 542,973.33 688,978.58
+流动资产合计 612,965.65 817,386.51
+流动负债合计 380,761.79 361,243.81
+资产总计 902,661.95 817,386.51
+负债合计 384,158.81 361,243.81
+"""
+
+    extracted = extractor._extract_key_figures(text, 2025)
+
+    assert extracted["current"]["accounts_receivable"] == 23750.00
+    assert "accounts_receivable" not in extracted["previous"]
+
+
 def test_parse_notes_ignores_false_positive_single_digit_amounts():
     extractor = PDFDataExtractor()
     extractor.text_content = """
